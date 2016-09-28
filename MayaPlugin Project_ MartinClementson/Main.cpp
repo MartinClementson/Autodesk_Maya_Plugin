@@ -1,8 +1,10 @@
+
 #include "MayaIncludes.h"
+
+#include <maya/MFnPlugin.h>
 #include "CallbackHandler.h"
-
-//CallbackHandler* callbackHandler = nullptr;
-
+CallbackHandler* callbackHandler = nullptr;
+MCallbackIdArray CallbackHandler::callBackIds;
 //circular_buffer<char>* localBuffer;
 
 
@@ -22,8 +24,10 @@ EXPORT MStatus initializePlugin(MObject obj) {
 	}
 
 	//localBuffer		= new circular_buffer<char>;
-	//callbackHandler = new CallbackHandler();
-	//callbackHandler->Init(localBuffer);
+
+
+	callbackHandler = new CallbackHandler();
+	callbackHandler->Init();
 
 	MGlobal::displayInfo("Plugin is loaded");
 	return MS::kSuccess;
@@ -34,12 +38,9 @@ EXPORT MStatus uninitializePlugin(MObject obj)
 {
 	MFnPlugin plugin(obj);
 
-
-	// Print to show the plugin was unloaded.
-	std::cout << "In uninitializePlugin()\n" << std::endl;
-
 	MGlobal::displayInfo("Plugin is unloaded");
-	//delete callbackHandler;
+	delete callbackHandler;
+
 	//delete localBuffer;
 	return MS::kSuccess;
 }

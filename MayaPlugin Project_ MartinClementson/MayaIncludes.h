@@ -1,11 +1,13 @@
 
 #pragma once
 
+
 // some definitions for the DLL to play nice with Maya
+#define NT_PLUGIN
+#define REQUIRE_IOSTREAM
 #define EXPORT __declspec(dllexport)
 
 
-#include <maya/MFnPlugin.h>
 #include <maya/MFnMesh.h>
 #include <maya/MFnTransform.h>
 #include <maya/MFloatPointArray.h>
@@ -16,6 +18,7 @@
 #include <maya/MEulerRotation.h>
 #include <maya/MVector.h>
 #include <maya/MItDag.h>
+#include <maya/MFnNumericData.h>
 #include <maya/MFnCamera.h>
 #include <maya/M3dView.h>
 #include <maya/MItMeshPolygon.h>
@@ -43,6 +46,7 @@
 #include <maya/MDagPath.h>
 #include <maya/MDagMessage.h>
 #include <maya/MUiMessage.h>
+#include <maya/MPlug.h>
 #include <maya/MModelMessage.h>
 
 // Commands
@@ -56,3 +60,6 @@
 
 
 #include <math.h>
+
+
+

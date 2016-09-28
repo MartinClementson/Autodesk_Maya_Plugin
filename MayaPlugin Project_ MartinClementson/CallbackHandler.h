@@ -1,34 +1,28 @@
 #pragma once
-#include "Callbacks.h"
-#include "circular.h"
-//
-//void VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug& otherPlug, void *);
-//
-//
-//void WorldMatrixChanged(MObject & transformNode, MDagMessage::MatrixModifiedFlags & modified, void * clientData);
-//
-//
-//void  TopologyChanged(MObject & node, void * clientData);
-//
-//void NodeCreated(MObject & node, void * clientData);
+#include "MayaIncludes.h"
+////#include "circular.h"
+////
 
 
-
-class CallbackHandler
+ class CallbackHandler 
 {
 
-
 private:
-	circular_buffer<char>*  localBuffer;
-	 MCallbackIdArray callBackIdls;
+	static MCallbackIdArray callBackIds;
+	//circular_buffer<char>*  localBuffer;
+
 	
 public:
 	CallbackHandler();
-	void AddCallbackId(MCallbackId id) { callBackIds.append(id); };
+	//void AddCallbackId(MCallbackId id) { callBackIds.append(id); };
 	~CallbackHandler();
-	bool Init(circular_buffer<char>*);
+	bool Init();
 
-
-
+#pragma region Callback functions
+static void VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug& otherPlug, void *);
+static void WorldMatrixChanged(MObject & transformNode, MDagMessage::MatrixModifiedFlags & modified, void * clientData);
+static void TopologyChanged(MObject & node, void * clientData);
+static void NodeCreated(MObject & node, void * clientData);
+#pragma endregion
 };
 
