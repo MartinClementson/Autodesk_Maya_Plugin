@@ -3,6 +3,7 @@
 
 #include <maya/MFnPlugin.h>
 #include "CallbackHandler.h"
+#define UNICODE 1
 CallbackHandler* callbackHandler = nullptr;
 MCallbackIdArray CallbackHandler::callBackIds;
 //circular_buffer<char>* localBuffer;

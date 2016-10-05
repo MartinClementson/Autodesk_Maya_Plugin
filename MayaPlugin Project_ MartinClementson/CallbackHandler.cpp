@@ -109,6 +109,10 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 {
 
 	MFnTransform obj(transformNode);
+	TransformMessage header;
+	header.nodeName = obj.name().asChar();
+	header.matrix;
+
 	MMatrix matrix = obj.transformationMatrix();
 	std::cerr << matrix.matrix[0][0] << " " << matrix.matrix[0][1] << " " << matrix.matrix[0][2] << " " << matrix.matrix[0][3] << std::endl;
 	std::cerr << matrix.matrix[1][0] << " " << matrix.matrix[1][1] << " " << matrix.matrix[1][2] << " " << matrix.matrix[1][3] << std::endl;
@@ -116,6 +120,39 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	std::cerr << matrix.matrix[3][0] << " " << matrix.matrix[3][1] << " " << matrix.matrix[3][2] << " " << matrix.matrix[3][3] << std::endl;
 
 	std::cerr << "A TransformNode has changed!! |" << obj.name() << "   | " << modified << std::endl;
+	
+	float floatMatrix[16];
+	int counter = 0;
+//for (size_t row = 0; row < 4; row++)
+//{
+//	for (size_t column = 0; column < 4; column++)
+//	{	
+//		header.matrix[(4 * column) + row] = (float)matrix.matrix[column][row]; // this is done in an inverted way, because DirectX handles the matrices differently
+//		
+//	}
+//
+//}
+
+	for (size_t row = 0; row < 4; row++)
+	{
+		for (size_t column = 0; column < 4; column++)
+		{
+			header.matrix[(4 * row) + column] = (float)matrix.matrix[row][column]; // this is done in an inverted way, because DirectX handles the matrices differently
+
+		}
+
+	}
+
+	//M3dView view // use this to get view matrix
+
+	char newHeader[sizeof(TransformMessage)];
+
+	memcpy(newHeader, &header, sizeof(TransformMessage));
+
+	
+
+
+	MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::TRANSFORM);
 }
 
 void CallbackHandler::TopologyChanged(MObject & node, void * clientData)

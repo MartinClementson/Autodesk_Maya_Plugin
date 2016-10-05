@@ -1,5 +1,6 @@
 #pragma once
 #include "MayaIncludes.h"
+#include "MessageHandler.h"
 ////#include "circular.h"
 ////
 
@@ -10,7 +11,7 @@
 private:
 	static MCallbackIdArray callBackIds;
 	//circular_buffer<char>*  localBuffer;
-
+	
 	
 public:
 	CallbackHandler();
