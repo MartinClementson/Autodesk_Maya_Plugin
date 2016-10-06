@@ -98,7 +98,8 @@ bool CircleBuffer::Push(void * msg, size_t length)
 {
 	SharedMemory::MesssageHeader* header = (SharedMemory::MesssageHeader*)((char*)_MessageMem->vFileView + *shared_head);
 
-	
+	if (((SharedMemory::SharedInformation*) _InfoMem->vFileView)->clients <= 1) // don't send any messages if there is no one to recieve them
+		return false;
 	
 	if (*shared_head == *shared_tail && *freeMem < _MessageMem->fileSize)
 		return false;

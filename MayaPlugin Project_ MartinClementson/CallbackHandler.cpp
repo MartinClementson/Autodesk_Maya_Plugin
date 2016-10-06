@@ -1,5 +1,140 @@
 
 #include "CallbackHandler.h"
+inline void UpdateChildren(MFnTransform& transformNode)
+{
+	// recursive
+
+	for (size_t i = 0; i < transformNode.childCount(); i++) // update the children meshes
+	{
+
+		if (transformNode.child(i).hasFn(MFn::kTransform))	 // child transform object is found!
+		{
+			MDagMessage::MatrixModifiedFlags modified = MDagMessage::MatrixModifiedFlags::kAll;
+			CallbackHandler::WorldMatrixChanged(transformNode.child(i), modified, NULL);
+
+			MFnTransform childN(transformNode.child(i));
+			UpdateChildren(childN);
+			//MFnTransform child(obj.parent(i));
+			//	std::cerr <<  MFnTransform(obj.parent(i)).fullPathName().asChar()<< std::endl;
+			//	childMatrices = childMatrices * child.transformationMatrix();
+
+		}
+
+	}
+
+
+
+}
+
+inline MMatrix GetAccumulatedMatrix(MFnTransform& obj)
+{
+	//Recursive.
+
+	MMatrix matrix = obj.transformationMatrix();
+
+	for (size_t i = 0; i < obj.parentCount(); i++) // get the parent transformnodes and multiply them in.
+	{
+		if (obj.parent(i).hasFn(MFn::kTransform))	 // parented object is found!
+		{
+			MFnTransform parent(obj.parent(i));
+			matrix = matrix* GetAccumulatedMatrix(parent);
+			
+
+
+		}
+		
+	}
+
+		return matrix;
+
+}
+
+void CallbackHandler::SendMesh(MFnMesh & mesh)
+{
+	MeshMessage meshMessage;
+
+
+	MFnTransform obj(mesh.parent(0));
+	MMatrix matrix = obj.transformationMatrix();
+
+	for (size_t row = 0; row < 4; row++)
+	{
+		for (size_t column = 0; column < 4; column++)
+		{
+			meshMessage.worldMatrix[(4 * row) + column] = (float)matrix.matrix[row][column];
+
+		}
+
+	}
+	
+	size_t sizeOfMessage = sizeof(MeshMessage);;
+		
+	
+	unsigned int offset = sizeof(MeshMessage);
+
+	MPointArray vertices;
+	
+	if(MStatus::kFailure == mesh.getPoints(vertices,MSpace::kObject))
+	{	
+		MGlobal::displayError("MFnMesh::getPoints");
+		std::cerr << "ERROR GETTING POINTS  " << std::endl;
+		return;
+	}
+	
+	meshMessage.meshName = string(obj.name().asChar()); //use the transformnode name, since that is the id in the renderer
+	meshMessage.vertexCount = mesh.numVertices();
+	meshMessage.indexCount = mesh.numPolygons() * 6;
+
+	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
+
+	for (size_t i = 0; i < meshMessage.vertexCount; i++)
+	{
+		Vertex tempVert;
+		tempVert.position.x =vertices[i].x;
+		tempVert.position.y =vertices[i].y;
+		tempVert.position.z =vertices[i].z;
+		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
+		offset += sizeof(Vertex);
+		std::cerr << "x: " << vertices[i].x << " y: " << vertices[i].y << " z: " << vertices[i].z << " "  << std::endl;
+	}
+
+	
+	unsigned int * indices = new unsigned int[ mesh.numPolygons() * 6];
+	
+	for (size_t polygon    = 0; polygon < mesh.numPolygons(); polygon++)
+	{
+		MIntArray polyIndices;
+
+		for (size_t tris = 0; tris < 2; tris++)
+		{
+			int verts[3];
+			mesh.getPolygonTriangleVertices(polygon,tris, verts);
+		
+				std::cerr << "Amount of indices on this polygon : " << polyIndices.length() << std::endl;
+
+
+				indices[(polygon * 6)+ 3 * tris]     = verts[0];
+				indices[(polygon * 6)+ 3 * tris + 1] = verts[2];	 //notice the shift, the order is different in DirectX, so we change it here
+				indices[(polygon * 6)+ 3 * tris + 2] = verts[1];	 //notice the shift, the order is different in DirectX, so we change it here
+				std::cerr << "tris# "<< tris << " " << verts[0] << " " << verts[1] << "  " << verts[2] << " \n" << std::endl;
+		}
+		
+	
+		
+		
+
+	}
+
+	//meshDataToSend
+	
+	memcpy(meshDataToSend + offset , indices, sizeof(unsigned int) *meshMessage.indexCount);
+	
+
+
+	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, MessageType::MESH, offset + (sizeof(unsigned int) *meshMessage.indexCount));
+	std::cerr << "MESSAGE SHOULD BE SENT NOW " << std::endl;
+	delete indices;
+}
 
 CallbackHandler::CallbackHandler()
 {
@@ -9,12 +144,14 @@ CallbackHandler::CallbackHandler()
 
 CallbackHandler::~CallbackHandler()
 {
+	delete[] CallbackHandler::meshDataToSend;
 	MMessage::removeCallbacks(callBackIds);
 
 }
 
 bool CallbackHandler::Init()
 {
+	CallbackHandler::meshDataToSend = new char[sizeof(Vertex) * 1000000 + sizeof(MeshMessage)]; //this is really risky. try to find another way
 	MStatus result = MS::kSuccess;
 
 	MCallbackId id;
@@ -53,28 +190,33 @@ bool CallbackHandler::Init()
 	for (; !meshIt.isDone(); meshIt.next())
 	{
 
-		MFnMesh thisMesh(meshIt.currentItem());
+		//MFnMesh thisMesh(meshIt.currentItem());
 
-		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(meshIt.currentItem(), VertChanged, NULL, &result);
-
+		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(meshIt.currentItem(), VertChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
+		MFnMesh mesh(meshIt.currentItem());
 		//thisMesh.attribute("quadSplit",) <---- IMPORTANT! find out how to!
 
 		if (result == MS::kSuccess)
 		{
 			callBackIds.append(polyId);
-			std::cerr << "Polychange callback added!  " << meshIt.currentItem().apiTypeStr() << std::endl;
+			std::cerr << "Polychange callback added!  " << mesh.fullPathName() << std::endl;
 		}
 		else
 			std::cerr << "error adding topologychange CB :" << meshIt.currentItem().apiTypeStr() << std::endl;
 
 
-		polyId = MPolyMessage::addPolyTopologyChangedCallback(meshIt.currentItem(), TopologyChanged, NULL, &result);
+		polyId = MPolyMessage::addPolyTopologyChangedCallback(meshIt.currentItem(), TopologyChanged, NULL, &result); // topology call back is for when a vert has been removed
 		if (result == MS::kSuccess)
 		{
 			callBackIds.append(polyId);
-			std::cerr << "Polychange callback added!  " << meshIt.currentItem().apiTypeStr() << std::endl;
+			
+			std::cerr << "Topology callback added!  " << mesh.fullPathName() << std::endl;
 		}
+	
+		CallbackHandler::SendMesh(mesh);
+		
 	}
+	
 
 
 	return true;
@@ -87,7 +229,7 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 	{
 		MStringArray changes;
 		MFnNumericData point(plug.attribute());
-
+		std::cerr << plug.info() << std::endl;
 
 		plug.getSetAttrCmds(changes, MPlug::kChanged);
 		if (changes.length() == 1)
@@ -108,36 +250,97 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::MatrixModifiedFlags & modified, void * clientData)
 {
 
+	MFnDependencyNode depNode(transformNode);
 	MFnTransform obj(transformNode);
 	TransformMessage header;
 	header.nodeName = obj.name().asChar();
 	header.matrix;
 
-	MMatrix matrix = obj.transformationMatrix();
+
+
+	MStatus result; 
+
+	
+
+	MMatrix matrix = GetAccumulatedMatrix(obj);
+	
+	//for (size_t i = 0; i <  obj.parentCount(); i++) // get the parent transformnodes and multiply them in.
+	//{
+	//	if (obj.parent(i).hasFn(MFn::kTransform))	 // parented object is found!
+	//	{
+	//		MFnTransform parent(obj.parent(i));
+	//			std::cerr << "Parent: "<< MFnTransform(obj.parent(i)).fullPathName().asChar()<< std::endl;
+	//			matrix = matrix * parent.transformationMatrix() ;
+	//			
+	//
+	//	}
+	//	//MObject ugh = obj.getAliasAttr(true);
+	//	//MPlug plug = connectedPlugs[i];
+	//}
+//	MMatrix childMatrices = matrix;
+	//for (size_t i = 0; i < obj.childCount(); i++)
+	//{
+	//
+	//	if (obj.child(i).hasFn(MFn::kTransform))	 // child object is found!
+	//	{
+	//		MFnTransform child(obj.parent(i));
+	//			std::cerr <<  MFnTransform(obj.parent(i)).fullPathName().asChar()<< std::endl;
+	//			childMatrices = childMatrices * child.transformationMatrix();
+	//
+	//	}
+	//
+	//}
+
+
+	
 	std::cerr << matrix.matrix[0][0] << " " << matrix.matrix[0][1] << " " << matrix.matrix[0][2] << " " << matrix.matrix[0][3] << std::endl;
 	std::cerr << matrix.matrix[1][0] << " " << matrix.matrix[1][1] << " " << matrix.matrix[1][2] << " " << matrix.matrix[1][3] << std::endl;
 	std::cerr << matrix.matrix[2][0] << " " << matrix.matrix[2][1] << " " << matrix.matrix[2][2] << " " << matrix.matrix[2][3] << std::endl;
 	std::cerr << matrix.matrix[3][0] << " " << matrix.matrix[3][1] << " " << matrix.matrix[3][2] << " " << matrix.matrix[3][3] << std::endl;
+	unsigned int numChildren = obj.childCount();
+	for (int child = 0; child < numChildren; child++)
+	{
+		if (obj.child(child).hasFn(MFn::kCamera))
+		{
+
+		//std::cerr << " THIS IS A CAMERA" << modified << std::endl;
+		//M3dView viewport = M3dView::active3dView();
+		//MMatrix viewMatrix;
+		//viewport.modelViewMatrix(viewMatrix);
+		//matrix = matrix.inverse();
+		//double3 translationPoint = { matrix[3][0], matrix[3][1], matrix[3][2] };
+		//matrix = matrix * viewMatrix;
+		////matrix[3][0] = translationPoint[0];//matrix[0][3];
+		////matrix[3][1] = translationPoint[1];//matrix[1][3];
+		////matrix[3][2] = translationPoint[2];//matrix[2][3];
+		//
+		//
+
+
+			MFnCamera cam(obj.child(child));
+			MPoint lookAt = cam.centerOfInterestPoint(MSpace::kWorld).homogenize();
+			MPoint eye = cam.eyePoint(MSpace::kWorld).homogenize();
+			
+			MVector zAxis = eye - lookAt;
+
+			matrix[0][2] = zAxis.x;
+			matrix[1][2] = zAxis.y;
+			matrix[2][2] = zAxis.z;
+		break; //Camera is found so break the loop
+		}
+
+	}
+	
 
 	std::cerr << "A TransformNode has changed!! |" << obj.name() << "   | " << modified << std::endl;
 	
-	float floatMatrix[16];
-	int counter = 0;
-//for (size_t row = 0; row < 4; row++)
-//{
-//	for (size_t column = 0; column < 4; column++)
-//	{	
-//		header.matrix[(4 * column) + row] = (float)matrix.matrix[column][row]; // this is done in an inverted way, because DirectX handles the matrices differently
-//		
-//	}
-//
-//}
+	
 
 	for (size_t row = 0; row < 4; row++)
 	{
 		for (size_t column = 0; column < 4; column++)
 		{
-			header.matrix[(4 * row) + column] = (float)matrix.matrix[row][column]; // this is done in an inverted way, because DirectX handles the matrices differently
+			header.matrix[(4 * row) + column] = (float)matrix.matrix[row][column]; 
 
 		}
 
@@ -153,6 +356,11 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 
 
 	MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::TRANSFORM);
+
+
+	UpdateChildren(obj);
+
+
 }
 
 void CallbackHandler::TopologyChanged(MObject & node, void * clientData)
@@ -168,11 +376,26 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 
 	if (node.hasFn(MFn::kMesh))
 	{
-
+		MFnMesh mesh(node);
+		MFnMesh meshTwo(mesh.parent(0));
+		MPointArray vertices;
+		std::cerr << meshTwo.name() <<  ":   DETTA LETAR VI EFTER" <<std::endl;
+		
 		MFnDagNode nodeHandle(node);
 		MStatus result;
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, VertChanged, NULL, &result);
-
+		
+		std::cerr << nodeHandle.fullPathName() << std::endl;
+	//result = mesh.getPoints(vertices, MSpace::kObject);
+	//if (MStatus::kFailure == result)
+	//{
+	//	
+	//	MGlobal::displayError("MFnMesh::getPoints");
+	//	std::cerr << result.errorString()<< std::endl;
+	//	return ;
+	//}
+	//CallbackHandler::SendMesh(mesh);
+	//std::cerr << "THE SENDMESH FUNCTION WAS CALLED  " << std::endl;
 
 		if (MS::kSuccess == result)
 		{
@@ -193,7 +416,8 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 			if (result == MS::kSuccess)
 			{
 				callBackIds.append(polyId);
-				std::cerr << "Polychange callback added!  " << node.apiTypeStr() << std::endl;
+				
+				std::cerr << "Polychange callback added!  "  << std::endl;
 			}
 
 		}

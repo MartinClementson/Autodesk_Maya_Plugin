@@ -7,15 +7,25 @@ MessageHandler::MessageHandler()
 }
 
 
-bool MessageHandler::SendNewMessage(char * msg, MessageType type)
+bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 {
 
 	MainMessageHeader mainHead;
 
 	switch (type)
 	{
-	case MESH:			 
+	case MESH:		
+	{
+
+		char * newMessage = new char[sizeof(MainMessageHeader) + length];
+		mainHead.messageType = MESH;
+		mainHead.msgSize     = length;
+		memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));						 //merge the message and the header
+		memcpy(newMessage + sizeof(MainMessageHeader), msg, length);					 //merge the message and the header
+		engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + length);
+		delete newMessage;
 		break;			 
+	}
 	case VERTSEGMENT:	 
 		break;			 
 	case VERTEX:		 

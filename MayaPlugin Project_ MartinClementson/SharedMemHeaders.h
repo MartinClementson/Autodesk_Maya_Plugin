@@ -116,7 +116,7 @@ struct MeshMessage
 {
 	string meshName;
 	
-	Matrix worldMatrix;
+	float worldMatrix[16];
 	unsigned int vertexCount;
 	unsigned int indexCount;
 	

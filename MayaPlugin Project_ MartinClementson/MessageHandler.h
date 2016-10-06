@@ -9,7 +9,7 @@ private :
 public:
 	static MessageHandler* GetInstance() { static MessageHandler instance; return &instance; };
 
-	bool SendNewMessage(char* msg, MessageType type);
+	bool SendNewMessage(char* msg,MessageType type, size_t length = 0);
 	~MessageHandler();
 };
 

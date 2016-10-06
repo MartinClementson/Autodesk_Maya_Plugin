@@ -6,6 +6,8 @@
 #define UNICODE 1
 CallbackHandler* callbackHandler = nullptr;
 MCallbackIdArray CallbackHandler::callBackIds;
+ char* CallbackHandler::meshDataToSend;
+
 //circular_buffer<char>* localBuffer;
 
 
