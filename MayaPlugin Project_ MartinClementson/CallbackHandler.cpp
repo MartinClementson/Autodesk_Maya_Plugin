@@ -264,33 +264,7 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 
 	MMatrix matrix = GetAccumulatedMatrix(obj);
 	
-	//for (size_t i = 0; i <  obj.parentCount(); i++) // get the parent transformnodes and multiply them in.
-	//{
-	//	if (obj.parent(i).hasFn(MFn::kTransform))	 // parented object is found!
-	//	{
-	//		MFnTransform parent(obj.parent(i));
-	//			std::cerr << "Parent: "<< MFnTransform(obj.parent(i)).fullPathName().asChar()<< std::endl;
-	//			matrix = matrix * parent.transformationMatrix() ;
-	//			
-	//
-	//	}
-	//	//MObject ugh = obj.getAliasAttr(true);
-	//	//MPlug plug = connectedPlugs[i];
-	//}
-//	MMatrix childMatrices = matrix;
-	//for (size_t i = 0; i < obj.childCount(); i++)
-	//{
-	//
-	//	if (obj.child(i).hasFn(MFn::kTransform))	 // child object is found!
-	//	{
-	//		MFnTransform child(obj.parent(i));
-	//			std::cerr <<  MFnTransform(obj.parent(i)).fullPathName().asChar()<< std::endl;
-	//			childMatrices = childMatrices * child.transformationMatrix();
-	//
-	//	}
-	//
-	//}
-
+	
 
 	
 	std::cerr << matrix.matrix[0][0] << " " << matrix.matrix[0][1] << " " << matrix.matrix[0][2] << " " << matrix.matrix[0][3] << std::endl;
