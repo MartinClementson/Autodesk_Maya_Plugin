@@ -93,25 +93,23 @@ void CallbackHandler::SendMesh(MFnMesh & mesh)
 	for (size_t polygon    = 0; polygon < mesh.numPolygons(); polygon++)
 	{
 		MIntArray polyIndices;
-
-		for (size_t tris = 0; tris < 2; tris++)
+		int trisAmnt = 2;
+		if (mesh.polygonVertexCount(polygon) <= 3)
+			trisAmnt = 1;
+		for (size_t tris = 0; tris < trisAmnt; tris++)
 		{
 			int verts[3];
-			mesh.getPolygonTriangleVertices(polygon,tris, verts);
-		
-				std::cerr << "Amount of indices on this polygon : " << polyIndices.length() << std::endl;
+			mesh.getPolygonTriangleVertices(polygon, tris, verts);
+
+			std::cerr << "Amount of indices on this polygon : " << polyIndices.length() << std::endl;
 
 
-				indices[(polygon * 6)+ 3 * tris]     = verts[0];
-				indices[(polygon * 6)+ 3 * tris + 1] = verts[2];	 //notice the shift, the order is different in DirectX, so we change it here
-				indices[(polygon * 6)+ 3 * tris + 2] = verts[1];	 //notice the shift, the order is different in DirectX, so we change it here
-				std::cerr << "tris# "<< tris << " " << verts[0] << " " << verts[1] << "  " << verts[2] << " \n" << std::endl;
+			indices[(polygon * 6) + 3 * tris] = verts[0];
+			indices[(polygon * 6) + 3 * tris + 1] = verts[2];	 //notice the shift, the order is different in DirectX, so we change it here
+			indices[(polygon * 6) + 3 * tris + 2] = verts[1];	 //notice the shift, the order is different in DirectX, so we change it here
+			std::cerr << "tris# " << tris << " " << verts[0] << " " << verts[1] << "  " << verts[2] << " \n" << std::endl;
 		}
 		
-	
-		
-		
-
 	}
 
 	//meshDataToSend
