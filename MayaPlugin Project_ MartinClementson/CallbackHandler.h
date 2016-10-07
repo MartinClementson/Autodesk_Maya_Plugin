@@ -27,6 +27,8 @@ static void VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug&
 static void WorldMatrixChanged(MObject & transformNode, MDagMessage::MatrixModifiedFlags & modified, void * clientData);
 static void TopologyChanged(MObject & node, void * clientData);
 static void NodeCreated(MObject & node, void * clientData);
+static void CameraUpdated(const MString &str, void *clientData);
+
 #pragma endregion
 };
 
