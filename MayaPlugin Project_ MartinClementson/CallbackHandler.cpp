@@ -27,24 +27,18 @@ inline void UpdateChildren(MFnTransform& transformNode)
 inline MMatrix GetAccumulatedMatrix(MFnTransform& obj)
 {
 	//Recursive.
+	MFnMatrixData parentMatrix = obj.findPlug("pm").elementByLogicalIndex(0).asMObject();	// Grab this objects parent matrix.
+	MMatrix pMatrix = parentMatrix.matrix();												// Store said matrix.
+	//for (size_t i = 0; i < obj.parentCount(); i++)											// Get the parent transformnodes to multiply them in.
+	//{
+	//	if (obj.parent(i).hasFn(MFn::kTransform))											// parented object is found!
+	//	{
+	//		MFnTransform parent(obj.parent(i));												// Prepare next recursive parent.
+	//		pMatrix = GetAccumulatedMatrix(parent) * pMatrix;								// Multiply results.
 
-	MMatrix matrix = obj.transformationMatrix();
-
-	for (size_t i = 0; i < obj.parentCount(); i++) // get the parent transformnodes and multiply them in.
-	{
-		if (obj.parent(i).hasFn(MFn::kTransform))	 // parented object is found!
-		{
-			MFnTransform parent(obj.parent(i));
-			matrix = matrix* GetAccumulatedMatrix(parent);
-			
-
-
-		}
-		
-	}
-
-		return matrix;
-
+	//	}
+	//}
+	return pMatrix;																			// Return result.
 }
 
 void CallbackHandler::SendMesh(MFnMesh & mesh)
@@ -256,10 +250,12 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	MStatus result; 
 
 	
+	
+	std::cerr << "parent matrix is type :  " << depNode.attribute("pm").apiTypeStr() << std::endl;;
 
-	MMatrix matrix = GetAccumulatedMatrix(obj);
-	
-	
+	MFnMatrixData parentMatrix = depNode.findPlug("pm").elementByLogicalIndex(0).asMObject();
+	MMatrix matrix = obj.transformationMatrix();
+	matrix = matrix * parentMatrix.matrix();
 
 	
 	std::cerr << matrix.matrix[0][0] << " " << matrix.matrix[0][1] << " " << matrix.matrix[0][2] << " " << matrix.matrix[0][3] << std::endl;
