@@ -14,9 +14,7 @@ inline void UpdateChildren(MFnTransform& transformNode)
 
 			MFnTransform childN(transformNode.child(i));
 			UpdateChildren(childN);
-			//MFnTransform child(obj.parent(i));
-			//	std::cerr <<  MFnTransform(obj.parent(i)).fullPathName().asChar()<< std::endl;
-			//	childMatrices = childMatrices * child.transformationMatrix();
+		
 
 		}
 
@@ -55,7 +53,11 @@ void CallbackHandler::SendMesh(MFnMesh & mesh)
 
 
 	MFnTransform obj(mesh.parent(0));
-	MMatrix matrix = obj.transformationMatrix();
+	MMatrix matrix       = obj.transformationMatrix();
+	size_t sizeOfMessage = sizeof(MeshMessage);
+	unsigned int offset  = sizeof(MeshMessage); //byte offset when storing the data to the char array
+
+	MPointArray vertices;
 
 	for (size_t row = 0; row < 4; row++)
 	{
@@ -67,13 +69,6 @@ void CallbackHandler::SendMesh(MFnMesh & mesh)
 
 	}
 	
-	size_t sizeOfMessage = sizeof(MeshMessage);;
-		
-	
-	unsigned int offset = sizeof(MeshMessage);
-
-	MPointArray vertices;
-	
 	if(MStatus::kFailure == mesh.getPoints(vertices,MSpace::kObject))
 	{	
 		MGlobal::displayError("MFnMesh::getPoints");
@@ -81,9 +76,9 @@ void CallbackHandler::SendMesh(MFnMesh & mesh)
 		return;
 	}
 	
-	meshMessage.meshName = string(obj.name().asChar()); //use the transformnode name, since that is the id in the renderer
+	meshMessage.meshName    = string(obj.name().asChar()); //use the transformnode name, since that is the id in the renderer
 	meshMessage.vertexCount = mesh.numVertices();
-	meshMessage.indexCount = mesh.numPolygons() * 6;
+	meshMessage.indexCount  = mesh.numPolygons() * 6;
 
 	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
 

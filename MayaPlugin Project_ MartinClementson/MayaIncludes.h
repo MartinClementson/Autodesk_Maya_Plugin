@@ -1,7 +1,7 @@
 
 #pragma once
 
-
+//\\storage10.student.bth.se\students\20142\maik14\MayaPlugin-Project_-MartinClementson
 // some definitions for the DLL to play nice with Maya
 #define NT_PLUGIN
 #define REQUIRE_IOSTREAM
