@@ -145,8 +145,9 @@ struct TransformMessage
 
 struct CameraMessage
 {
-	Matrix viewMatrix;
-	Matrix projMatrix;
+	string nodeName;
+	float viewMatrix[16];
+	float projMatrix[16];
 
 };
 
