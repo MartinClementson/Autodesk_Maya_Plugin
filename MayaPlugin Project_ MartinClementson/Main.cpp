@@ -6,6 +6,7 @@
 #define UNICODE 1
 CallbackHandler* callbackHandler = nullptr;
 MCallbackIdArray CallbackHandler::callBackIds;
+
  char* CallbackHandler::meshDataToSend;
 
 //circular_buffer<char>* localBuffer;
@@ -27,7 +28,7 @@ EXPORT MStatus initializePlugin(MObject obj) {
 	}
 
 	//localBuffer		= new circular_buffer<char>;
-
+	
 
 	callbackHandler = new CallbackHandler();
 	callbackHandler->Init();
