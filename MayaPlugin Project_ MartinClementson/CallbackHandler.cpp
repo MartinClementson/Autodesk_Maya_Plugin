@@ -27,24 +27,18 @@ inline void UpdateChildren(MFnTransform& transformNode)
 inline MMatrix GetAccumulatedMatrix(MFnTransform& obj)
 {
 	//Recursive.
+	MFnMatrixData parentMatrix = obj.findPlug("pm").elementByLogicalIndex(0).asMObject();	// Grab this objects parent matrix.
+	MMatrix pMatrix = parentMatrix.matrix();												// Store said matrix.
+	//for (size_t i = 0; i < obj.parentCount(); i++)											// Get the parent transformnodes to multiply them in.
+	//{
+	//	if (obj.parent(i).hasFn(MFn::kTransform))											// parented object is found!
+	//	{
+	//		MFnTransform parent(obj.parent(i));												// Prepare next recursive parent.
+	//		pMatrix = GetAccumulatedMatrix(parent) * pMatrix;								// Multiply results.
 
-	MMatrix matrix = obj.transformationMatrix();
-
-	for (size_t i = 0; i < obj.parentCount(); i++) // get the parent transformnodes and multiply them in.
-	{
-		if (obj.parent(i).hasFn(MFn::kTransform))	 // parented object is found!
-		{
-			MFnTransform parent(obj.parent(i));
-			matrix = matrix* GetAccumulatedMatrix(parent);
-			
-
-
-		}
-		
-	}
-
-		return matrix;
-
+	//	}
+	//}
+	return pMatrix;																			// Return result.
 }
 
 void CallbackHandler::SendMesh(MFnMesh & mesh)
@@ -99,25 +93,23 @@ void CallbackHandler::SendMesh(MFnMesh & mesh)
 	for (size_t polygon    = 0; polygon < mesh.numPolygons(); polygon++)
 	{
 		MIntArray polyIndices;
-
-		for (size_t tris = 0; tris < 2; tris++)
+		int trisAmnt = 2;
+		if (mesh.polygonVertexCount(polygon) <= 3)
+			trisAmnt = 1;
+		for (size_t tris = 0; tris < trisAmnt; tris++)
 		{
 			int verts[3];
-			mesh.getPolygonTriangleVertices(polygon,tris, verts);
-		
-				std::cerr << "Amount of indices on this polygon : " << polyIndices.length() << std::endl;
+			mesh.getPolygonTriangleVertices(polygon, tris, verts);
+
+			std::cerr << "Amount of indices on this polygon : " << polyIndices.length() << std::endl;
 
 
-				indices[(polygon * 6)+ 3 * tris]     = verts[0];
-				indices[(polygon * 6)+ 3 * tris + 1] = verts[2];	 //notice the shift, the order is different in DirectX, so we change it here
-				indices[(polygon * 6)+ 3 * tris + 2] = verts[1];	 //notice the shift, the order is different in DirectX, so we change it here
-				std::cerr << "tris# "<< tris << " " << verts[0] << " " << verts[1] << "  " << verts[2] << " \n" << std::endl;
+			indices[(polygon * 6) + 3 * tris] = verts[0];
+			indices[(polygon * 6) + 3 * tris + 1] = verts[2];	 //notice the shift, the order is different in DirectX, so we change it here
+			indices[(polygon * 6) + 3 * tris + 2] = verts[1];	 //notice the shift, the order is different in DirectX, so we change it here
+			std::cerr << "tris# " << tris << " " << verts[0] << " " << verts[1] << "  " << verts[2] << " \n" << std::endl;
 		}
 		
-	
-		
-		
-
 	}
 
 	//meshDataToSend
@@ -256,10 +248,12 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	MStatus result; 
 
 	
+	
+	std::cerr << "parent matrix is type :  " << depNode.attribute("pm").apiTypeStr() << std::endl;;
 
-	MMatrix matrix = GetAccumulatedMatrix(obj);
-	
-	
+	MFnMatrixData parentMatrix = depNode.findPlug("pm").elementByLogicalIndex(0).asMObject();
+	MMatrix matrix = obj.transformationMatrix();
+	matrix = matrix * parentMatrix.matrix();
 
 	
 	std::cerr << matrix.matrix[0][0] << " " << matrix.matrix[0][1] << " " << matrix.matrix[0][2] << " " << matrix.matrix[0][3] << std::endl;
