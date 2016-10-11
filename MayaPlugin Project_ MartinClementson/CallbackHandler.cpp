@@ -14,8 +14,6 @@ inline void UpdateChildren(MFnTransform& transformNode)
 
 			MFnTransform childN(transformNode.child(i));
 			UpdateChildren(childN);
-		
-
 		}
 
 	}
@@ -30,24 +28,20 @@ inline MMatrix GetAccumulatedMatrix(MFnTransform& obj)
 
 	MMatrix matrix = obj.transformationMatrix();
 
-	for (size_t i = 0; i < obj.parentCount(); i++) // get the parent transformnodes and multiply them in.
+	for (size_t i  = 0; i < obj.parentCount(); i++) // get the parent transformnodes and multiply them in.
 	{
 		if (obj.parent(i).hasFn(MFn::kTransform))	 // parented object is found!
 		{
 			MFnTransform parent(obj.parent(i));
 			matrix = matrix* GetAccumulatedMatrix(parent);
-			
-
-
-		}
-		
+		}	
 	}
 
 		return matrix;
 
 }
 
-void CallbackHandler::SendMesh(MFnMesh & mesh)
+bool CallbackHandler::SendMesh(MFnMesh & mesh)
 {
 	MeshMessage meshMessage;
 
@@ -64,16 +58,14 @@ void CallbackHandler::SendMesh(MFnMesh & mesh)
 		for (size_t column = 0; column < 4; column++)
 		{
 			meshMessage.worldMatrix[(4 * row) + column] = (float)matrix.matrix[row][column];
-
 		}
-
 	}
 	
 	if(MStatus::kFailure == mesh.getPoints(vertices,MSpace::kObject))
 	{	
 		MGlobal::displayError("MFnMesh::getPoints");
 		std::cerr << "ERROR GETTING POINTS  " << std::endl;
-		return;
+		return false;
 	}
 	
 	meshMessage.meshName    = string(obj.name().asChar()); //use the transformnode name, since that is the id in the renderer
@@ -106,17 +98,11 @@ void CallbackHandler::SendMesh(MFnMesh & mesh)
 			mesh.getPolygonTriangleVertices(polygon,tris, verts);
 		
 				//std::cerr << "Amount of indices on this polygon : " << polyIndices.length() << std::endl;
-
-
 				indices[(polygon * 6)+ 3 * tris]     = verts[0];
 				indices[(polygon * 6)+ 3 * tris + 1] = verts[2];	 //notice the shift, the order is different in DirectX, so we change it here
 				indices[(polygon * 6)+ 3 * tris + 2] = verts[1];	 //notice the shift, the order is different in DirectX, so we change it here
 				//std::cerr << "tris# "<< tris << " " << verts[0] << " " << verts[1] << "  " << verts[2] << " \n" << std::endl;
 		}
-		
-	
-		
-		
 
 	}
 
@@ -126,9 +112,13 @@ void CallbackHandler::SendMesh(MFnMesh & mesh)
 	
 
 
-	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, MessageType::MESH, offset + (sizeof(unsigned int) *meshMessage.indexCount));
+bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, 
+		MessageType::MESH, 
+		offset + (sizeof(unsigned int) *meshMessage.indexCount));
 
 	delete indices;
+	std::cerr << "Result returns : " << result << std::endl;
+	return result;
 }
 
 CallbackHandler::CallbackHandler()
@@ -146,6 +136,8 @@ CallbackHandler::~CallbackHandler()
 
 bool CallbackHandler::Init()
 {
+
+
 	CallbackHandler::meshDataToSend = new char[sizeof(Vertex) * 1000000 + sizeof(MeshMessage)]; //this is really risky. try to find another way
 	MStatus result = MS::kSuccess;
 
@@ -163,15 +155,14 @@ bool CallbackHandler::Init()
 
 	//MCallbackId tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel1"), CameraUpdated, NULL, &result);
 	//MCallbackId tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel1"), CameraUpdated, NULL, &result);
-
+	id = MTimerMessage::addTimerCallback(0.1f, TimeCallback, NULL, &result);
+	callBackIds.append(id);
 
 	MItDag transformIt(MItDag::kBreadthFirst, MFn::kTransform, &result);
 	for (; !transformIt.isDone(); transformIt.next())
 	{
 
 		MFnTransform thisTransform(transformIt.currentItem());
-
-
 		MDagPath path = MDagPath::getAPathTo(thisTransform.child(0));
 
 		if (transformIt.currentItem().hasFn(MFn::kCamera))
@@ -269,17 +260,11 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	header.nodeName = obj.name().asChar();
 	header.matrix;
 
-
-
 	MStatus result; 
-
-	
 
 	MMatrix matrix = GetAccumulatedMatrix(obj);
 	
-	
 
-	
 	unsigned int numChildren = obj.childCount();
 	for (int child = 0; child < numChildren; child++)
 	{
@@ -308,38 +293,26 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 
 	std::cerr << "A TransformNode has changed!! |" << obj.name() << "   | " << modified << std::endl;
 	
-	
 
 	for (size_t row = 0; row < 4; row++)
 	{
 		for (size_t column = 0; column < 4; column++)
 		{
 			header.matrix[(4 * row) + column] = (float)matrix.matrix[row][column]; 
-
 		}
-
 	}
-
-	//M3dView view // use this to get view matrix
 
 	char newHeader[sizeof(TransformMessage)];
 
 	memcpy(newHeader, &header, sizeof(TransformMessage));
 
-	
-
-
 	MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::TRANSFORM);
 
-
 	UpdateChildren(obj);
-
-
 }
 
 void CallbackHandler::TopologyChanged(MObject & node, void * clientData)
 {
-
 	MFnMesh thisMesh(node);
 
 	std::cerr << "Topology has changed |" << thisMesh.name() << std::endl;
@@ -351,9 +324,9 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 	if (node.hasFn(MFn::kMesh))
 	{
 		MFnMesh mesh(node);
-		MFnMesh meshTwo(mesh.parent(0));
+		MFnMesh meshTwo(mesh.child(0));
 		MPointArray vertices;
-		std::cerr << meshTwo.name() <<  ":   DETTA LETAR VI EFTER" <<std::endl;
+		
 		
 		MFnDagNode nodeHandle(node);
 		MStatus result;
@@ -368,8 +341,15 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 	//	std::cerr << result.errorString()<< std::endl;
 	//	return ;
 	//}
-	//CallbackHandler::SendMesh(mesh);
-	//std::cerr << "THE SENDMESH FUNCTION WAS CALLED  " << std::endl;
+		
+
+		if (!CallbackHandler::SendMesh(mesh))
+		{
+			queueMutex.lock();
+			meshToSendQueue.push(node);
+			queueMutex.unlock();
+		}
+		std::cerr << "THE SENDMESH FUNCTION WAS CALLED FOR NEW MESH  :"<< mesh.name() << std::endl;
 
 		if (MS::kSuccess == result)
 		{
@@ -414,36 +394,56 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 	if (str == focusedPanel)
 	{
 		//MFnTransform obj(node);
-		TransformMessage header;
+		CameraMessage header;
 		//header.nodeName = //obj.name().asChar();
 	
-		header.matrix;
+		
 	
 		//std::cerr << " THIS IS A CAMERA"  << std::endl;
 		M3dView viewport = M3dView::active3dView();
-		
+		MDagPath camera;
+		viewport.getCamera(camera);
+		MFnTransform tempCamTransform(camera.transform());
+		header.nodeName = tempCamTransform.name().asChar();
+		std::cerr << "Camera is   :" << tempCamTransform.name().asChar() << std::endl;
 		viewport.updateViewingParameters();
 		MMatrix viewMatrix;
 		viewport.modelViewMatrix(viewMatrix);
 		//matrix = matrix.inverse();
 		//double3 translationPoint = { matrix[3][0], matrix[3][1], matrix[3][2] };
-	
+		
 		for (size_t row = 0; row < 4; row++)
 		{
 			for (size_t column = 0; column < 4; column++)
 			{
-				header.matrix[(4 * row) + column] = (float)viewMatrix.matrix[row][column];
-
+				header.viewMatrix[(4 * row) + column] = (float)viewMatrix.matrix[row][column];
 			}
-
 		}
-
+		
 
 		char newHeader[sizeof(TransformMessage)];
 	
 		memcpy(newHeader, &header, sizeof(TransformMessage));
 	
-		MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::TRANSFORM);
+		MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::CAMERA);
 	}
+
+}
+
+void CallbackHandler::TimeCallback(float elapsedTime, float lastTime, void * clientData)
+{
+
+	queueMutex.lock();
+	if (!meshToSendQueue.empty())
+	{
+		std::cerr << "Time Callback: trying to send mesh" << std::endl;
+		while (CallbackHandler::SendMesh(MFnMesh(meshToSendQueue.front())))
+		{
+			meshToSendQueue.pop();
+			if (meshToSendQueue.empty())
+				return;
+		}
+	}
+	queueMutex.unlock();
 
 }
