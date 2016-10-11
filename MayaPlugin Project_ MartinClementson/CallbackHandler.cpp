@@ -60,6 +60,12 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		return false;
 	}
 	
+	MIntArray numTriangles;
+	MIntArray triangleVerts;
+	mesh.getTriangles(numTriangles, triangleVerts);
+
+	meshMessage.indexCount = triangleVerts.length();
+
 	meshMessage.meshName    = string(obj.name().asChar()); //use the transformnode name, since that is the id in the renderer
 	meshMessage.vertexCount = mesh.numVertices();
 	
@@ -69,68 +75,34 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	for (size_t i = 0; i < meshMessage.vertexCount; i++)
 	{
 		Vertex tempVert;
-		tempVert.position.x =vertices[i].x;
-		tempVert.position.y =vertices[i].y;
-		tempVert.position.z =vertices[i].z;
+		tempVert.position.x =	vertices[i].x;
+		tempVert.position.y =	vertices[i].y;
+		tempVert.position.z =	vertices[i].z;
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
 	//	std::cerr << "x: " << vertices[i].x << " y: " << vertices[i].y << " z: " << vertices[i].z << " "  << std::endl;
 	}
-//	MIntArray numTriangles;
-//	MIntArray triangleVerts;
-//	mesh.getTriangles(numTriangles, triangleVerts);
-//
-//	meshMessage.indexCount = triangleVerts.length();
-//	unsigned int * indices = new unsigned int[meshMessage.indexCount];
-//
-//	for (size_t i = 0; i < triangleVerts.length() - 4; i+=3)
-//	{
-//		
-//		indices[i * 3]     = triangleVerts[i*3 +0];
-//		indices[i * 3 + 1] = triangleVerts[i*3 +2];	 //notice the shift, the order is different in DirectX, so we change it here
-//		indices[i * 3 + 2] = triangleVerts[i*3 +1];
-//
-//	}
-//
-	//memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) * triangleVerts.length());
-	//memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
+	
+	unsigned int * indices = new unsigned int[meshMessage.indexCount];
 
-
-
-		////////////////////////////////////////////////////
-	unsigned int * indices = new unsigned int[mesh.numPolygons() * 3];
-	meshMessage.indexCount = mesh.numPolygons() * 6;
-	for (size_t polygon    = 0; polygon < mesh.numPolygons(); polygon++)
+	for (size_t i = 0; i < triangleVerts.length() / 3; i++)
 	{
-		MIntArray polyIndices;
-		int trisAmnt = 2;
-		if (mesh.polygonVertexCount(polygon) <= 3)
-			trisAmnt = 1;
 		
-		trisAmnt = mesh.polygonVertexCount(polygon) / 3;
-		for (size_t tris = 0; tris < trisAmnt; tris++)
-		{
-			 int verts[3];
-	
-			mesh.getPolygonTriangleVertices(polygon,tris, verts);
-				//std::cerr << "Amount of indices on this polygon : " << polyIndices.length() << std::endl;
-			indices[(polygon * 6)+ 3 * tris]     = verts[0];
-			indices[(polygon * 6)+ 3 * tris + 1] = verts[2];	 //notice the shift, the order is different in DirectX, so we change it here
-			indices[(polygon * 6)+ 3 * tris + 2] = verts[1];	 //notice the shift, the order is different in DirectX, so we change it here
-				//std::cerr << "tris# "<< tris << " " << verts[0] << " " << verts[1] << "  " << verts[2] << " \n" << std::endl;
-		}
-	
+		indices[i * 3]     = triangleVerts[i*3 + 0];
+		indices[i * 3 + 1] = triangleVerts[i*3 + 2];	 //notice the shift, the order is different in DirectX, so we change it here
+		indices[i * 3 + 2] = triangleVerts[i*3 + 1];
+
 	}
 
-	//meshDataToSend
-	
-	memcpy(meshDataToSend + offset , indices, sizeof(unsigned int) *meshMessage.indexCount);
-	
+	memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
+
+
+
 
 
 bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, 
 		MessageType::MESH, 
-		offset + (sizeof(unsigned int) *meshMessage.indexCount));
+		offset + ( sizeof(unsigned int) * meshMessage.indexCount));
 
 	delete indices;
 	std::cerr << "Result returns : " << result << std::endl;
