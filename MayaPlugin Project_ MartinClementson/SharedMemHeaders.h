@@ -100,7 +100,8 @@ enum MessageType {
 	VERTEX,
 	CAMERA,
 	TRANSFORM,
-	MATERIAL
+	MATERIAL,
+	DELETION
 
 
 };
@@ -155,3 +156,8 @@ struct CameraMessage
 
 };
 
+struct DeleteMessage
+{
+	char nodeName[256];
+	unsigned int nameLength;
+};
