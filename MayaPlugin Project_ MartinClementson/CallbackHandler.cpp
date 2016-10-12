@@ -445,10 +445,8 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 
 		char newHeader[sizeof(CameraMessage)];
 		memset(newHeader, '\0', sizeof(CameraMessage));
-		memcpy(newHeader, header.nodeName, header.nameLength);
-		memcpy(newHeader + 256, &header.nameLength, sizeof(unsigned int));
-		memcpy(newHeader + 256 + sizeof(unsigned int), &header.viewMatrix, sizeof(float)* 16);
-		//memcpy(newHeader, &header, sizeof(CameraMessage));
+		
+		memcpy(newHeader, &header, sizeof(CameraMessage));
 	
 		MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::CAMERA);
 	}
