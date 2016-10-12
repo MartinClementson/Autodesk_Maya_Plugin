@@ -33,6 +33,7 @@
 #include <maya/MItDependencyNodes.h>
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MFnMatrixData.h>
+#include <maya/MFloatMatrix.h>
 
 // Wrappers
 #include <maya/MGlobal.h>
