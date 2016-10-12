@@ -38,6 +38,11 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 
 	MPointArray vertices;
 
+	MIntArray numvertperpoly, normalIds;
+	MFloatVectorArray normals, biNormals;
+
+
+
 	for (size_t row = 0; row < 4; row++)
 	{
 		for (size_t column = 0; column < 4; column++)
@@ -50,6 +55,27 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	{	
 		MGlobal::displayError("MFnMesh::getPoints");
 		std::cerr << "ERROR GETTING POINTS  " << std::endl;
+		return false;
+	}
+
+	if (MStatus::kFailure == mesh.getNormals(normals, MSpace::kObject));
+	{
+		MGlobal::displayError("MFnMesh::getNormals");
+		std::cerr << "ERROR GETTING NORMALS  " << std::endl;
+		return false;
+	}
+
+	if (MStatus::kFailure == mesh.getBinormals(biNormals, MSpace::kObject));
+	{
+		MGlobal::displayError("MFnMesh::getBinormals");
+		std::cerr << "ERROR GETTING BINORMALS  " << std::endl;
+		return false;
+	}
+
+	if (MStatus::kFailure == mesh.getNormalIds(numvertperpoly, normalIds));
+	{
+		MGlobal::displayError("MFnMesh::getNormalIds");
+		std::cerr << "ERROR GETTING NORMAL ID  " << std::endl;
 		return false;
 	}
 	
@@ -74,6 +100,15 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		tempVert.position.x =	vertices[i].x;
 		tempVert.position.y =	vertices[i].y;
 		tempVert.position.z =	vertices[i].z;
+
+		tempVert.normal.x = normals[i].x;
+		tempVert.normal.y = normals[i].y;
+		tempVert.normal.z = normals[i].z;
+
+		tempVert.binormal.x = biNormals[i].x;
+		tempVert.binormal.y = biNormals[i].y;
+		tempVert.binormal.z = biNormals[i].z;
+
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
 	//	std::cerr << "x: " << vertices[i].x << " y: " << vertices[i].y << " z: " << vertices[i].z << " "  << std::endl;
