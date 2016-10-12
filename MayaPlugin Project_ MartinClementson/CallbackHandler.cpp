@@ -143,8 +143,7 @@ bool CallbackHandler::Init()
 	tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel4"), CameraUpdated, NULL, &result);
 	callBackIds.append(tempId);
 
-	//MCallbackId tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel1"), CameraUpdated, NULL, &result);
-	//MCallbackId tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel1"), CameraUpdated, NULL, &result);
+
 	id = MTimerMessage::addTimerCallback(0.1f, TimeCallback, NULL, &result);
 	callBackIds.append(id);
 
@@ -155,6 +154,14 @@ bool CallbackHandler::Init()
 		MFnTransform thisTransform(transformIt.currentItem());
 		MDagPath path = MDagPath::getAPathTo(thisTransform.child(0));
 
+		MCallbackId cbId = MNodeMessage::addNodeAboutToDeleteCallback(transformIt.currentItem(), NodeDestroyed, NULL, &result); // topology call back is for when a vert has been removed
+		if (result == MS::kSuccess)
+		{
+			callBackIds.append(cbId);
+
+			std::cerr << "Deletion callback added!  " << thisTransform.fullPathName() << std::endl;
+		}
+
 		if (transformIt.currentItem().hasFn(MFn::kCamera))
 		{
 			
@@ -162,8 +169,6 @@ bool CallbackHandler::Init()
 		}
 		else
 		{
-
-
 			MCallbackId newId = MDagMessage::addWorldMatrixModifiedCallback(path, WorldMatrixChanged, NULL, &result);
 
 			if (result == MS::kSuccess)
@@ -172,11 +177,11 @@ bool CallbackHandler::Init()
 					std::cerr << "Transform callback added!  " << path.fullPathName() << std::endl;
 				else
 					std::cerr << "Could not add worldMatrix callback , Path: " << path.fullPathName() << std::endl;
-
 			}
 			else
 				std::cerr << "Could not add worldMatrix callback , Path: " << path.fullPathName() << std::endl;
 		}
+
 	}
 
 
@@ -190,9 +195,9 @@ bool CallbackHandler::Init()
 		MFnMesh mesh(meshIt.currentItem());
 		
 
-		string name = mesh.name().asChar();
-		string command = "setAttr " + name +".quadSplit 1";
-		MGlobal::executeCommandStringResult(MString(command.c_str()));
+	//string name = mesh.name().asChar();
+	//string command = "setAttr " + name +".quadSplit 1";
+	//MGlobal::executeCommandStringResult(MString(command.c_str()));
 
 		if (result == MS::kSuccess)
 		{
@@ -210,6 +215,8 @@ bool CallbackHandler::Init()
 			
 			std::cerr << "Topology callback added!  " << mesh.fullPathName() << std::endl;
 		}
+
+		
 	
 		CallbackHandler::SendMesh(mesh);
 		
@@ -315,8 +322,24 @@ void CallbackHandler::TopologyChanged(MObject & node, void * clientData)
 void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 {
 
+	if (node.hasFn(MFn::kTransform))
+	{
+		MStatus result;
+		MCallbackId cbId = MNodeMessage::addNodeAboutToDeleteCallback(node, NodeDestroyed, NULL, &result);
+		if (result == MS::kSuccess)
+		{
+			callBackIds.append(cbId);
+
+			std::cerr << "Deletion callback added!  " << std::endl;
+		}
+	}
+
+
 	if (node.hasFn(MFn::kMesh))
 	{
+
+
+
 		MFnMesh mesh(node);
 		
 		MFnDagNode nodeHandle(node);
@@ -336,28 +359,27 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 	
 		if (MS::kSuccess == result)
 		{
-
-
 			callBackIds.append(polyId);
 			std::cerr << "A new node was created \n";
 			std::cerr << "Callback triggered from  node : " << nodeHandle.name() << "\n"
 				<< "Node Path : " << nodeHandle.fullPathName() << "\n" << std::endl;
-
-			MDagPath path = MDagPath::getAPathTo(node);
-			polyId = MDagMessage::addWorldMatrixModifiedCallback(path, WorldMatrixChanged, NULL, &result);
-			if (result == MS::kSuccess)
-			{
-				callBackIds.append(polyId);
-			}
-			MCallbackId polyId = MPolyMessage::addPolyTopologyChangedCallback(node, TopologyChanged, NULL, &result);
-			if (result == MS::kSuccess)
-			{
-				callBackIds.append(polyId);
-				
-				std::cerr << "Polychange callback added!  "  << std::endl;
-			}
-
 		}
+
+		MDagPath path = MDagPath::getAPathTo(node);
+		polyId = MDagMessage::addWorldMatrixModifiedCallback(path, WorldMatrixChanged, NULL, &result);
+		if (result == MS::kSuccess)
+		{
+			callBackIds.append(polyId);
+		}
+
+		polyId = MPolyMessage::addPolyTopologyChangedCallback(node, TopologyChanged, NULL, &result);
+		if (result == MS::kSuccess)
+		{
+			callBackIds.append(polyId);
+			
+			std::cerr << "Polychange callback added!  "  << std::endl;
+		}
+
 
 	}
 
@@ -449,4 +471,24 @@ void CallbackHandler::TimeCallback(float elapsedTime, float lastTime, void * cli
 	}
 	queueMutex.unlock();
 
+}
+
+void CallbackHandler::NodeDestroyed(MObject &node, MDGModifier &modifier, void *clientData)
+{
+	
+
+
+	if (node.hasFn(MFn::kTransform))
+	{
+
+		MFnTransform   object(node);
+	
+		std::cerr << "DESTROYED LIKE A PUNY MAGGOT : " << object.name().asChar() << std::endl;
+		
+		DeleteMessage newMessage;
+		memset(&newMessage, '\0', sizeof(DeleteMessage));
+		memcpy(newMessage.nodeName, object.name().asChar(), object.name().length());
+		newMessage.nameLength = object.name().length();
+		MessageHandler::GetInstance()->SendNewMessage((char*) &newMessage, MessageType::DELETION, sizeof(DeleteMessage));
+	}
 }
