@@ -65,7 +65,7 @@ struct Vertex
 	Float2 uv;
 
 
-	Vertex(Float3 position, Float3 normal, Float2 uv)
+	Vertex(Float3 position, Float3 normal, Float3 binormal, Float2 uv)
 	{
 		this->position.x = position.x;
 		this->position.y = position.y;
@@ -74,6 +74,10 @@ struct Vertex
 		this->normal.x = normal.x;
 		this->normal.y = normal.y;
 		this->normal.z = normal.z;
+
+		this->binormal.x = binormal.x;
+		this->binormal.y = binormal.y;
+		this->binormal.z = binormal.z;
 
 		this->uv.x = uv.x;
 		this->uv.y = uv.y;
