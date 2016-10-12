@@ -114,7 +114,8 @@ struct MainMessageHeader
 
 struct MeshMessage
 {
-	string meshName;
+	char nodeName[256];
+	unsigned int nameLength;
 	
 	float worldMatrix[16];
 	unsigned int vertexCount;
@@ -124,7 +125,8 @@ struct MeshMessage
 
 struct VertSegmentMessage //for n verts, but not a whole mesh,
 {
-	string meshName;
+	char nodeName[256];
+	unsigned int nameLength;
 	unsigned int numVertices;
 
 };
@@ -138,14 +140,16 @@ struct VertexMessage // for single verts.
 
 struct TransformMessage
 {
-	string nodeName;
+	char nodeName[256];
+	unsigned int nameLength;
 	float matrix[16];
 
 };
 
 struct CameraMessage
 {
-	string nodeName;
+	char nodeName[256];
+	unsigned int nameLength;
 	float viewMatrix[16];
 	float projMatrix[16];
 

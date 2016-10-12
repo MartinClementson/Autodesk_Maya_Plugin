@@ -64,4 +64,5 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 
 MessageHandler::~MessageHandler()
 {
+
 }
