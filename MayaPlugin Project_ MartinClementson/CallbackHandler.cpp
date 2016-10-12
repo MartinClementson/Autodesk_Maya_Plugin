@@ -36,7 +36,10 @@ inline MMatrix GetAccumulatedMatrix(MFnTransform& obj)
 bool CallbackHandler::SendMesh(MFnMesh & mesh)
 {
 	MeshMessage meshMessage;
+	string name = mesh.name().asChar();
+	string command = "setAttr " + name + ".quadSplit 1";
 
+	MGlobal::executeCommandStringResult(MString(command.c_str()));
 
 	MFnTransform obj(mesh.parent(0));
 	MMatrix matrix       = obj.transformationMatrix();
@@ -66,7 +69,10 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 
 	meshMessage.indexCount = triangleVerts.length();
 
-	meshMessage.meshName    = string(obj.name().asChar()); //use the transformnode name, since that is the id in the renderer
+	meshMessage.nameLength = obj.name().length();
+	memcpy(meshMessage.nodeName, obj.name().asChar(), meshMessage.nameLength);
+	meshMessage.nodeName[meshMessage.nameLength] = '\0';
+	 //use the transformnode name, since that is the id in the renderer
 	meshMessage.vertexCount = mesh.numVertices();
 	
 
@@ -186,7 +192,11 @@ bool CallbackHandler::Init()
 
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(meshIt.currentItem(), VertChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 		MFnMesh mesh(meshIt.currentItem());
-		//thisMesh.attribute("quadSplit",) <---- IMPORTANT! find out how to!
+		
+
+		string name = mesh.name().asChar();
+		string command = "setAttr " + name +".quadSplit 1";
+		MGlobal::executeCommandStringResult(MString(command.c_str()));
 
 		if (result == MS::kSuccess)
 		{
@@ -245,8 +255,13 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	MFnDependencyNode depNode(transformNode);
 	MFnTransform obj(transformNode);
 	TransformMessage header;
-	header.nodeName = obj.name().asChar();
-	header.matrix;
+
+	header.nameLength = obj.name().length();
+	memcpy(header.nodeName, obj.name().asChar(), header.nameLength);
+	header.nodeName[header.nameLength] = '\0';
+
+
+
 
 	MStatus result; 
 
@@ -262,17 +277,7 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	{
 		if (obj.child(child).hasFn(MFn::kCamera))
 		{
-	
-		//std::cerr << " THIS IS A CAMERA" << modified << std::endl;
-		//M3dView viewport = M3dView::active3dView();
-		//viewport.updateViewingParameters();
-		//MMatrix viewMatrix;
-		//viewport.modelViewMatrix(viewMatrix);
-		////matrix = matrix.inverse();
-		////double3 translationPoint = { matrix[3][0], matrix[3][1], matrix[3][2] };
-		//matrix = viewMatrix;
-		//
-		//break; //Camera is found so break the loop
+			//if This belongs to a camera, return. 
 			return;
 		}
 	
@@ -316,24 +321,13 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 	if (node.hasFn(MFn::kMesh))
 	{
 		MFnMesh mesh(node);
-		MFnMesh meshTwo(mesh.child(0));
-		MPointArray vertices;
-		
 		
 		MFnDagNode nodeHandle(node);
 		MStatus result;
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, VertChanged, NULL, &result);
 		
 		std::cerr << nodeHandle.fullPathName() << std::endl;
-	//result = mesh.getPoints(vertices, MSpace::kObject);
-	//if (MStatus::kFailure == result)
-	//{
-	//	
-	//	MGlobal::displayError("MFnMesh::getPoints");
-	//	std::cerr << result.errorString()<< std::endl;
-	//	return ;
-	//}
-		
+	
 
 		if (!CallbackHandler::SendMesh(mesh))
 		{
@@ -341,8 +335,8 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 			meshToSendQueue.push(node);
 			queueMutex.unlock();
 		}
-		std::cerr << "THE SENDMESH FUNCTION WAS CALLED FOR NEW MESH  :"<< mesh.name() << std::endl;
-
+		
+	
 		if (MS::kSuccess == result)
 		{
 
@@ -385,18 +379,23 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
 	if (str == focusedPanel)
 	{
-		//MFnTransform obj(node);
-		CameraMessage header;
-		//header.nodeName = //obj.name().asChar();
-	
 		
-	
-		//std::cerr << " THIS IS A CAMERA"  << std::endl;
+		CameraMessage header;
+
 		M3dView viewport = M3dView::active3dView();
-		MDagPath camera;
-		viewport.getCamera(camera);
-		MFnTransform tempCamTransform(camera.transform());
-		header.nodeName = tempCamTransform.name().asChar();
+
+		////// All this just to get the proper name////////////
+		MDagPath camera;									 //
+		viewport.getCamera(camera);							 // 
+		MFnTransform tempCamTransform(camera.transform());	 // 
+		///////////////////////////////////////////////////////
+
+		header.nameLength = tempCamTransform.name().length();
+		memcpy(header.nodeName, tempCamTransform.name().asChar(), header.nameLength > 256 ?  256 : header.nameLength );
+		header.nodeName[header.nameLength] = '\0';
+
+
+
 		std::cerr << "Camera is   :" << tempCamTransform.name().asChar() << std::endl;
 		viewport.updateViewingParameters();
 		MMatrix viewMatrix;
@@ -411,11 +410,18 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 				header.viewMatrix[(4 * row) + column] = (float)viewMatrix.matrix[row][column];
 			}
 		}
+
+		std::cerr << viewMatrix.matrix[0][0] << " " << viewMatrix.matrix[0][1] << " " << viewMatrix.matrix[0][2] << " " << viewMatrix .matrix[0][3] << std::endl;
+		std::cerr << viewMatrix.matrix[1][0] << " " << viewMatrix.matrix[1][1] << " " << viewMatrix.matrix[1][2] << " " << viewMatrix .matrix[1][3] << std::endl;
+		std::cerr << viewMatrix.matrix[2][0] << " " << viewMatrix.matrix[2][1] << " " << viewMatrix.matrix[2][2] << " " << viewMatrix .matrix[2][3] << std::endl;
+		std::cerr << viewMatrix.matrix[3][0] << " " << viewMatrix.matrix[3][1] << " " << viewMatrix.matrix[3][2] << " " << viewMatrix .matrix[3][3] << std::endl;
+
 		
 
-		char newHeader[sizeof(TransformMessage)];
-	
-		memcpy(newHeader, &header, sizeof(TransformMessage));
+		char newHeader[sizeof(CameraMessage)];
+		memset(newHeader, '\0', sizeof(CameraMessage));
+		
+		memcpy(newHeader, &header, sizeof(CameraMessage));
 	
 		MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::CAMERA);
 	}
