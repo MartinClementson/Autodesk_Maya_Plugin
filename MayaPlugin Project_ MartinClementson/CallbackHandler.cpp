@@ -277,17 +277,7 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	{
 		if (obj.child(child).hasFn(MFn::kCamera))
 		{
-	
-		//std::cerr << " THIS IS A CAMERA" << modified << std::endl;
-		//M3dView viewport = M3dView::active3dView();
-		//viewport.updateViewingParameters();
-		//MMatrix viewMatrix;
-		//viewport.modelViewMatrix(viewMatrix);
-		////matrix = matrix.inverse();
-		////double3 translationPoint = { matrix[3][0], matrix[3][1], matrix[3][2] };
-		//matrix = viewMatrix;
-		//
-		//break; //Camera is found so break the loop
+			//if This belongs to a camera, return. 
 			return;
 		}
 	
@@ -331,26 +321,13 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 	if (node.hasFn(MFn::kMesh))
 	{
 		MFnMesh mesh(node);
-		MFnMesh meshTwo(mesh.child(0));
-		MPointArray vertices;
-
-	
-		
 		
 		MFnDagNode nodeHandle(node);
 		MStatus result;
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, VertChanged, NULL, &result);
 		
 		std::cerr << nodeHandle.fullPathName() << std::endl;
-	//result = mesh.getPoints(vertices, MSpace::kObject);
-	//if (MStatus::kFailure == result)
-	//{
-	//	
-	//	MGlobal::displayError("MFnMesh::getPoints");
-	//	std::cerr << result.errorString()<< std::endl;
-	//	return ;
-	//}
-		
+	
 
 		if (!CallbackHandler::SendMesh(mesh))
 		{
@@ -402,18 +379,16 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
 	if (str == focusedPanel)
 	{
-		//MFnTransform obj(node);
+		
 		CameraMessage header;
-		//header.nodeName = //obj.name().asChar();
-	
-		
-	
-		//std::cerr << " THIS IS A CAMERA"  << std::endl;
+
 		M3dView viewport = M3dView::active3dView();
-		MDagPath camera;
-		viewport.getCamera(camera);
-		MFnTransform tempCamTransform(camera.transform());
-		
+
+		////// All this just to get the proper name////////////
+		MDagPath camera;									 //
+		viewport.getCamera(camera);							 // 
+		MFnTransform tempCamTransform(camera.transform());	 // 
+		///////////////////////////////////////////////////////
 
 		header.nameLength = tempCamTransform.name().length();
 		memcpy(header.nodeName, tempCamTransform.name().asChar(), header.nameLength > 256 ?  256 : header.nameLength );
