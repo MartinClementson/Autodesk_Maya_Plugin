@@ -22,16 +22,6 @@ inline void UpdateChildren(MFnTransform& transformNode)
 
 }
 
-inline MMatrix GetAccumulatedMatrix(MFnTransform& obj)
-{
-	//Recursive.
-	MFnMatrixData parentMatrix = obj.findPlug("pm").elementByLogicalIndex(0).asMObject();	// Grab this objects parent matrix.
-	MMatrix pMatrix = parentMatrix.matrix();												// Store said matrix.
-	
-
-	return pMatrix;																			// Return result.
-
-}
 
 bool CallbackHandler::SendMesh(MFnMesh & mesh)
 {
