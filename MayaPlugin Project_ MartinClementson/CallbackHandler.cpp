@@ -36,13 +36,6 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	size_t sizeOfMessage = sizeof(MeshMessage);
 	unsigned int offset  = sizeof(MeshMessage); //byte offset when storing the data to the char array
 
-	MPointArray vertices;
-
-	MIntArray numvertperpoly, normalIds;
-	MFloatVectorArray normals, biNormals;
-
-
-
 	for (size_t row = 0; row < 4; row++)
 	{
 		for (size_t column = 0; column < 4; column++)
@@ -50,35 +43,9 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 			meshMessage.worldMatrix[(4 * row) + column] = (float)matrix.matrix[row][column];
 		}
 	}
-	
-	if(MStatus::kFailure == mesh.getPoints(vertices,MSpace::kObject))
-	{	
-		MGlobal::displayError("MFnMesh::getPoints");
-		std::cerr << "ERROR GETTING POINTS  " << std::endl;
-		return false;
-	}
 
-	if (MStatus::kFailure == mesh.getNormals(normals, MSpace::kObject));
-	{
-		MGlobal::displayError("MFnMesh::getNormals");
-		std::cerr << "ERROR GETTING NORMALS  " << std::endl;
-		return false;
-	}
 
-	if (MStatus::kFailure == mesh.getBinormals(biNormals, MSpace::kObject));
-	{
-		MGlobal::displayError("MFnMesh::getBinormals");
-		std::cerr << "ERROR GETTING BINORMALS  " << std::endl;
-		return false;
-	}
 
-	if (MStatus::kFailure == mesh.getNormalIds(numvertperpoly, normalIds));
-	{
-		MGlobal::displayError("MFnMesh::getNormalIds");
-		std::cerr << "ERROR GETTING NORMAL ID  " << std::endl;
-		return false;
-	}
-	
 	MIntArray numTriangles;
 	MIntArray triangleVerts;
 	mesh.getTriangles(numTriangles, triangleVerts);
@@ -89,29 +56,34 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	memcpy(meshMessage.nodeName, obj.name().asChar(), meshMessage.nameLength);
 	meshMessage.nodeName[meshMessage.nameLength] = '\0';
 	 //use the transformnode name, since that is the id in the renderer
-	meshMessage.vertexCount = mesh.numVertices();
+	meshMessage.vertexCount = mesh.numFaceVertices();
 	
-
 	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
 
+	const float* rawVertices = mesh.getRawPoints(0);
+	const float* rawNormals = mesh.getRawNormals(0);
+	MFloatArray U, V;
+	mesh.getUVs(U, V, 0);
+
+
+	int test = mesh.numNormals();
+	int test2 = triangleVerts.length() / 3;
 	for (size_t i = 0; i < meshMessage.vertexCount; i++)
 	{
 		Vertex tempVert;
-		tempVert.position.x =	vertices[i].x;
-		tempVert.position.y =	vertices[i].y;
-		tempVert.position.z =	vertices[i].z;
+		tempVert.position.x = rawVertices[i * 3];
+		tempVert.position.y = rawVertices[i * 3 + 1];
+		tempVert.position.z = rawVertices[i * 3 + 2];
 
-		tempVert.normal.x = normals[i].x;
-		tempVert.normal.y = normals[i].y;
-		tempVert.normal.z = normals[i].z;
+		tempVert.normal.x = rawNormals[i * 3];
+		tempVert.normal.y = rawNormals[i * 3 + 1];
+		tempVert.normal.z = rawNormals[i * 3 + 2];
 
-		tempVert.binormal.x = biNormals[i].x;
-		tempVert.binormal.y = biNormals[i].y;
-		tempVert.binormal.z = biNormals[i].z;
+		tempVert.uv.x = V[i];
+		tempVert.uv.y = U[i];
 
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
-	//	std::cerr << "x: " << vertices[i].x << " y: " << vertices[i].y << " z: " << vertices[i].z << " "  << std::endl;
 	}
 	
 	unsigned int * indices = new unsigned int[meshMessage.indexCount];
@@ -124,12 +96,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		indices[i * 3 + 2] = triangleVerts[i*3 + 1];
 
 	}
-
 	memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
-
-
-
-
 
 bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, 
 		MessageType::MESH, 
