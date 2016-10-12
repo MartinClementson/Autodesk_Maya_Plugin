@@ -37,13 +37,8 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	unsigned int offset  = sizeof(MeshMessage); //byte offset when storing the data to the char array
 
 	for (size_t row = 0; row < 4; row++)
-	{
 		for (size_t column = 0; column < 4; column++)
-		{
 			meshMessage.worldMatrix[(4 * row) + column] = (float)matrix.matrix[row][column];
-		}
-	}
-
 
 
 	MIntArray numTriangles;
@@ -55,45 +50,89 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	meshMessage.nameLength = obj.name().length();
 	memcpy(meshMessage.nodeName, obj.name().asChar(), meshMessage.nameLength);
 	meshMessage.nodeName[meshMessage.nameLength] = '\0';
-	 //use the transformnode name, since that is the id in the renderer
+	//use the transformnode name, since that is the id in the renderer
 	meshMessage.vertexCount = mesh.numFaceVertices();
-	
+
 	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
 
+	//vertices
 	const float* rawVertices = mesh.getRawPoints(0);
-	const float* rawNormals = mesh.getRawNormals(0);
+	//Normals
+	vector<MFloatVector> normals;
+	normals.reserve(mesh.numFaceVertices());
+	MFloatVectorArray faceNormals;
+	for (size_t i = 0; i < mesh.numPolygons(); i++)
+	{
+		mesh.getVertexNormals(i, faceNormals, MSpace::kObject);
+		for (size_t j = 0; j < faceNormals.length(); j++)
+		{
+			normals.push_back(faceNormals[j]);
+		}
+	}
+	//BiNormals
+	vector<MFloatVector> biNormals;
+	biNormals.reserve(mesh.numFaceVertices());
+	MFloatVectorArray faceBiNormals;
+	for (size_t i = 0; i < mesh.numPolygons(); i++)
+	{
+		mesh.getFaceVertexBinormals(i, faceBiNormals, MSpace::kObject);
+		for (size_t j = 0; j < faceBiNormals.length(); j++)
+		{
+			biNormals.push_back(faceBiNormals[j]);
+		}
+	}
+	//Tangents
+	vector<MFloatVector> tangents;
+	tangents.reserve(mesh.numFaceVertices());
+	MFloatVectorArray faceTangents;
+	for (size_t i = 0; i < mesh.numPolygons(); i++)
+	{
+		mesh.getFaceVertexTangents(i, faceTangents, MSpace::kObject);
+		for (size_t j = 0; j < faceTangents.length(); j++)
+		{
+			tangents.push_back(faceTangents[j]);
+		}
+	}
+	//UVs
 	MFloatArray U, V;
-	mesh.getUVs(U, V, 0);
+	mesh.getUVs(V, U, 0); //changing U and V positions to align with D3D11.
 
-
-	int test = mesh.numNormals();
-	int test2 = triangleVerts.length() / 3;
-	for (size_t i = 0; i < meshMessage.vertexCount; i++)
+	//Combination Time.
+	vector<Vertex> tempVertices;
+	tempVertices.reserve(mesh.numFaceVertices());
+	int test = mesh.numFaceVertices();
+	for (size_t i = 0; i < mesh.numFaceVertices(); i++)
 	{
 		Vertex tempVert;
 		tempVert.position.x = rawVertices[i * 3];
 		tempVert.position.y = rawVertices[i * 3 + 1];
 		tempVert.position.z = rawVertices[i * 3 + 2];
+		tempVert.normal.x = normals[i].z;
+		tempVert.normal.y = normals[i].y;
+		tempVert.normal.z = normals[i].x;
+		tempVert.binormal.x = biNormals[i].x;
+		tempVert.binormal.y = biNormals[i].y;
+		tempVert.binormal.z = biNormals[i].z;
+		tempVert.tangent.x = tangents[i].x;
+		tempVert.tangent.y = tangents[i].y;
+		tempVert.tangent.z = tangents[i].z;
+		tempVert.uv.x = U[i];
+		tempVert.uv.y = V[i];
 
-		tempVert.normal.x = rawNormals[i * 3];
-		tempVert.normal.y = rawNormals[i * 3 + 1];
-		tempVert.normal.z = rawNormals[i * 3 + 2];
-
-		tempVert.uv.x = V[i];
-		tempVert.uv.y = U[i];
-
+		tempVertices.push_back(tempVert);
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
 	}
-	
+
+	//Indices
 	unsigned int * indices = new unsigned int[meshMessage.indexCount];
 
 	for (size_t i = 0; i < triangleVerts.length() / 3; i++)
 	{
-		
-		indices[i * 3]     = triangleVerts[i*3 + 0];
-		indices[i * 3 + 1] = triangleVerts[i*3 + 2];	 //notice the shift, the order is different in DirectX, so we change it here
-		indices[i * 3 + 2] = triangleVerts[i*3 + 1];
+
+		indices[i * 3] = triangleVerts[i * 3 + 0];
+		indices[i * 3 + 1] = triangleVerts[i * 3 + 2];	 //notice the shift, the order is different in DirectX, so we change it here
+		indices[i * 3 + 2] = triangleVerts[i * 3 + 1];
 
 	}
 	memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
