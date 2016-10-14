@@ -33,6 +33,7 @@ static void TopologyChanged(MObject & node, void * clientData);
 static void NodeCreated(MObject & node, void * clientData);
 static void CameraUpdated(const MString &str, void *clientData);
 static void TimeCallback(float elapsedTime, float lastTime, void *clientData);
+static void NodeDestroyed(MObject &node, MDGModifier &modifier, void *clientData);
 
 #pragma endregion
 };

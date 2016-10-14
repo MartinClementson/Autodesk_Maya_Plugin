@@ -104,7 +104,8 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	for (size_t i = 0; i < mesh.numFaceVertices(); i++)
 	{
 		Vertex tempVert;
-		tempVert.position.x = rawVertices[i * 3];
+
+		tempVert.position.x = -rawVertices[i * 3];
 		tempVert.position.y = rawVertices[i * 3 + 1];
 		tempVert.position.z = rawVertices[i * 3 + 2];
 		tempVert.normal.x = normals[i].z;
@@ -129,11 +130,9 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 
 	for (size_t i = 0; i < triangleVerts.length() / 3; i++)
 	{
-
-		indices[i * 3] = triangleVerts[i * 3 + 0];
-		indices[i * 3 + 1] = triangleVerts[i * 3 + 2];	 //notice the shift, the order is different in DirectX, so we change it here
-		indices[i * 3 + 2] = triangleVerts[i * 3 + 1];
-
+		indices[i * 3]     = triangleVerts[i*3 + 0];
+		indices[i * 3 + 1] = triangleVerts[i*3 + 1];	 //notice the shift, the order is different in DirectX, so we change it here
+		indices[i * 3 + 2] = triangleVerts[i*3 + 2];
 	}
 	memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
 
@@ -174,12 +173,17 @@ bool CallbackHandler::Init()
 
 	callBackIds.append(id);
 
-	MCallbackId tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel4"), CameraUpdated, NULL, &result);
-
+	MCallbackId tempId;
+	tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel1"), CameraUpdated, NULL, &result);
+	callBackIds.append(tempId);
+	tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel2"), CameraUpdated, NULL, &result);
+	callBackIds.append(tempId);
+	tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel3"), CameraUpdated, NULL, &result);
+	callBackIds.append(tempId);
+	tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel4"), CameraUpdated, NULL, &result);
 	callBackIds.append(tempId);
 
-	//MCallbackId tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel1"), CameraUpdated, NULL, &result);
-	//MCallbackId tempId = MUiMessage::add3dViewPreRenderMsgCallback(MString("modelPanel1"), CameraUpdated, NULL, &result);
+
 	id = MTimerMessage::addTimerCallback(0.1f, TimeCallback, NULL, &result);
 	callBackIds.append(id);
 
@@ -190,6 +194,14 @@ bool CallbackHandler::Init()
 		MFnTransform thisTransform(transformIt.currentItem());
 		MDagPath path = MDagPath::getAPathTo(thisTransform.child(0));
 
+		MCallbackId cbId = MNodeMessage::addNodeAboutToDeleteCallback(transformIt.currentItem(), NodeDestroyed, NULL, &result); // topology call back is for when a vert has been removed
+		if (result == MS::kSuccess)
+		{
+			callBackIds.append(cbId);
+
+			std::cerr << "Deletion callback added!  " << thisTransform.fullPathName() << std::endl;
+		}
+
 		if (transformIt.currentItem().hasFn(MFn::kCamera))
 		{
 			
@@ -197,8 +209,6 @@ bool CallbackHandler::Init()
 		}
 		else
 		{
-
-
 			MCallbackId newId = MDagMessage::addWorldMatrixModifiedCallback(path, WorldMatrixChanged, NULL, &result);
 
 			if (result == MS::kSuccess)
@@ -207,11 +217,11 @@ bool CallbackHandler::Init()
 					std::cerr << "Transform callback added!  " << path.fullPathName() << std::endl;
 				else
 					std::cerr << "Could not add worldMatrix callback , Path: " << path.fullPathName() << std::endl;
-
 			}
 			else
 				std::cerr << "Could not add worldMatrix callback , Path: " << path.fullPathName() << std::endl;
 		}
+
 	}
 
 
@@ -225,9 +235,9 @@ bool CallbackHandler::Init()
 		MFnMesh mesh(meshIt.currentItem());
 		
 
-		string name = mesh.name().asChar();
-		string command = "setAttr " + name +".quadSplit 1";
-		MGlobal::executeCommandStringResult(MString(command.c_str()));
+	//string name = mesh.name().asChar();
+	//string command = "setAttr " + name +".quadSplit 1";
+	//MGlobal::executeCommandStringResult(MString(command.c_str()));
 
 		if (result == MS::kSuccess)
 		{
@@ -245,6 +255,8 @@ bool CallbackHandler::Init()
 			
 			std::cerr << "Topology callback added!  " << mesh.fullPathName() << std::endl;
 		}
+
+		
 	
 		CallbackHandler::SendMesh(mesh);
 		
@@ -296,7 +308,7 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 
 	MStatus result; 
 
-	std::cerr << "parent matrix is type :  " << depNode.attribute("pm").apiTypeStr() << std::endl;;
+	
 
 	MFnMatrixData parentMatrix = depNode.findPlug("pm").elementByLogicalIndex(0).asMObject();
 	MMatrix matrix = obj.transformationMatrix();
@@ -308,6 +320,7 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	{
 		if (obj.child(child).hasFn(MFn::kCamera))
 		{
+			std::cerr << " Camera node : not sent" << std::endl;
 			//if This belongs to a camera, return. 
 			return;
 		}
@@ -349,8 +362,24 @@ void CallbackHandler::TopologyChanged(MObject & node, void * clientData)
 void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 {
 
+	if (node.hasFn(MFn::kTransform))
+	{
+		MStatus result;
+		MCallbackId cbId = MNodeMessage::addNodeAboutToDeleteCallback(node, NodeDestroyed, NULL, &result);
+		if (result == MS::kSuccess)
+		{
+			callBackIds.append(cbId);
+
+			std::cerr << "Deletion callback added!  " << std::endl;
+		}
+	}
+
+
 	if (node.hasFn(MFn::kMesh))
 	{
+
+
+
 		MFnMesh mesh(node);
 		
 		MFnDagNode nodeHandle(node);
@@ -370,28 +399,27 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 	
 		if (MS::kSuccess == result)
 		{
-
-
 			callBackIds.append(polyId);
 			std::cerr << "A new node was created \n";
 			std::cerr << "Callback triggered from  node : " << nodeHandle.name() << "\n"
 				<< "Node Path : " << nodeHandle.fullPathName() << "\n" << std::endl;
-
-			MDagPath path = MDagPath::getAPathTo(node);
-			polyId = MDagMessage::addWorldMatrixModifiedCallback(path, WorldMatrixChanged, NULL, &result);
-			if (result == MS::kSuccess)
-			{
-				callBackIds.append(polyId);
-			}
-			MCallbackId polyId = MPolyMessage::addPolyTopologyChangedCallback(node, TopologyChanged, NULL, &result);
-			if (result == MS::kSuccess)
-			{
-				callBackIds.append(polyId);
-				
-				std::cerr << "Polychange callback added!  "  << std::endl;
-			}
-
 		}
+
+		MDagPath path = MDagPath::getAPathTo(node);
+		polyId = MDagMessage::addWorldMatrixModifiedCallback(path, WorldMatrixChanged, NULL, &result);
+		if (result == MS::kSuccess)
+		{
+			callBackIds.append(polyId);
+		}
+
+		polyId = MPolyMessage::addPolyTopologyChangedCallback(node, TopologyChanged, NULL, &result);
+		if (result == MS::kSuccess)
+		{
+			callBackIds.append(polyId);
+			
+			std::cerr << "Polychange callback added!  "  << std::endl;
+		}
+
 
 	}
 
@@ -408,39 +436,47 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		MString focusedPanel = MGlobal::executeCommandStringResult("getPanel -wf");
 		std::cerr << "Panel callback : " << str.asChar()          << std::endl;
 		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
-	if (str == focusedPanel)
-	{
+	//if (str == focusedPanel)
+	//{
 		
 		CameraMessage header;
+		M3dView viewport;//= M3dView::active3dView();
+		M3dView::getM3dViewFromModelPanel(focusedPanel, viewport);
 
-		M3dView viewport = M3dView::active3dView();
-
-		////// All this just to get the proper name////////////
-		MDagPath camera;									 //
-		viewport.getCamera(camera);							 // 
-		MFnTransform tempCamTransform(camera.transform());	 // 
+		////// All this just to get the proper name/////////////
+		MDagPath camera;									  //
+		viewport.getCamera(camera);							  // 
+		MFnTransform tempCamTransform(camera.transform());	  // 
+															  //
+		header.nameLength = tempCamTransform.name().length(); //
+		memcpy(header.nodeName, tempCamTransform.name().asChar(), header.nameLength > 256 ?  256 : header.nameLength );
+		header.nodeName[header.nameLength] = '\0';			  //
 		///////////////////////////////////////////////////////
 
-		header.nameLength = tempCamTransform.name().length();
-		memcpy(header.nodeName, tempCamTransform.name().asChar(), header.nameLength > 256 ?  256 : header.nameLength );
-		header.nodeName[header.nameLength] = '\0';
-
-
+		MFnCamera mCam(camera);
+		
 
 		std::cerr << "Camera is   :" << tempCamTransform.name().asChar() << std::endl;
 		viewport.updateViewingParameters();
-		MMatrix viewMatrix;
-		viewport.modelViewMatrix(viewMatrix);
-		//matrix = matrix.inverse();
-		//double3 translationPoint = { matrix[3][0], matrix[3][1], matrix[3][2] };
-		
-		for (size_t row = 0; row < 4; row++)
-		{
-			for (size_t column = 0; column < 4; column++)
-			{
-				header.viewMatrix[(4 * row) + column] = (float)viewMatrix.matrix[row][column];
-			}
-		}
+
+		//View Matrix
+		MMatrix viewMatrixDouble;
+		viewport.modelViewMatrix(viewMatrixDouble);		  // get the matrix as double
+		MFloatMatrix viewMatrix(viewMatrixDouble.matrix); // convert it into float
+		memcpy(header.viewMatrix, viewMatrix.matrix, sizeof(float) * 16);
+																		 
+		//Proj Matrix												 
+	//MMatrix projMatrixDouble;					
+	//viewport.projectionMatrix(projMatrixDouble);
+	//projMatrixDouble = projMatrixDouble.homogenize();
+	//
+	//MFloatMatrix projMatrix(viewMatrixDouble.matrix); // convert it into float
+
+		MFloatMatrix projMatrix = mCam.projectionMatrix();
+		memcpy(header.projMatrix, projMatrix.matrix, sizeof(float) * 16);
+
+
+	
 
 		std::cerr << viewMatrix.matrix[0][0] << " " << viewMatrix.matrix[0][1] << " " << viewMatrix.matrix[0][2] << " " << viewMatrix .matrix[0][3] << std::endl;
 		std::cerr << viewMatrix.matrix[1][0] << " " << viewMatrix.matrix[1][1] << " " << viewMatrix.matrix[1][2] << " " << viewMatrix .matrix[1][3] << std::endl;
@@ -455,7 +491,7 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		memcpy(newHeader, &header, sizeof(CameraMessage));
 	
 		MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::CAMERA);
-	}
+	//}
 
 }
 
@@ -475,4 +511,24 @@ void CallbackHandler::TimeCallback(float elapsedTime, float lastTime, void * cli
 	}
 	queueMutex.unlock();
 
+}
+
+void CallbackHandler::NodeDestroyed(MObject &node, MDGModifier &modifier, void *clientData)
+{
+	
+
+
+	if (node.hasFn(MFn::kTransform))
+	{
+
+		MFnTransform   object(node);
+	
+		std::cerr << "DESTROYED LIKE A PUNY MAGGOT : " << object.name().asChar() << std::endl;
+		
+		DeleteMessage newMessage;
+		memset(&newMessage, '\0', sizeof(DeleteMessage));
+		memcpy(newMessage.nodeName, object.name().asChar(), object.name().length());
+		newMessage.nameLength = object.name().length();
+		MessageHandler::GetInstance()->SendNewMessage((char*) &newMessage, MessageType::DELETION, sizeof(DeleteMessage));
+	}
 }
