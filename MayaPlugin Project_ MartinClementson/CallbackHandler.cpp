@@ -71,7 +71,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	for (size_t i = 0; i < meshMessage.vertexCount; i++)
 	{
 		Vertex tempVert;
-		tempVert.position.x =	vertices[i].x;
+		tempVert.position.x =	-vertices[i].x;
 		tempVert.position.y =	vertices[i].y;
 		tempVert.position.z =	vertices[i].z;
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
@@ -85,8 +85,8 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	{
 		
 		indices[i * 3]     = triangleVerts[i*3 + 0];
-		indices[i * 3 + 1] = triangleVerts[i*3 + 2];	 //notice the shift, the order is different in DirectX, so we change it here
-		indices[i * 3 + 2] = triangleVerts[i*3 + 1];
+		indices[i * 3 + 1] = triangleVerts[i*3 + 1];	 //notice the shift, the order is different in DirectX, so we change it here
+		indices[i * 3 + 2] = triangleVerts[i*3 + 2];
 
 	}
 
