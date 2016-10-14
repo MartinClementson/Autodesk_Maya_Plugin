@@ -55,20 +55,10 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 
 	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
 
-	//vertices
+	//Raw vertices
 	const float* rawVertices = mesh.getRawPoints(0);
-	//Normals
-	vector<MFloatVector> normals;
-	normals.reserve(mesh.numFaceVertices());
-	MFloatVectorArray faceNormals;
-	for (size_t i = 0; i < mesh.numPolygons(); i++)
-	{
-		mesh.getVertexNormals(i, faceNormals, MSpace::kObject);
-		for (size_t j = 0; j < faceNormals.length(); j++)
-		{
-			normals.push_back(faceNormals[j]);
-		}
-	}
+	//Raw normals
+	const float* rawNormals = mesh.getRawNormals(0);
 	//BiNormals
 	vector<MFloatVector> biNormals;
 	biNormals.reserve(mesh.numFaceVertices());
@@ -95,45 +85,68 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	}
 	//UVs
 	MFloatArray U, V;
-	mesh.getUVs(V, U, 0); //changing U and V positions to align with D3D11.
+	mesh.getUVs(V, U, 0); //changing U and V positions to align with D3D11. 0 stands for what UV set to use (default 0)
 
-	//Combination Time.
+	//combtime new
 	vector<Vertex> tempVertices;
-	tempVertices.reserve(mesh.numFaceVertices());
-	int test = mesh.numFaceVertices();
-	for (size_t i = 0; i < mesh.numFaceVertices(); i++)
+	tempVertices.reserve(36);
+	MIntArray triCount, TriIndices;
+	mesh.getTriangleOffsets(triCount, TriIndices);
+	MIntArray vertCount, vertList;
+	mesh.getVertices(vertCount, vertList);
+	MIntArray normCount, normalList;
+	mesh.getNormalIds(normCount, normalList);
+	int test = TriIndices.length();
+	int test2 = mesh.numFaceVertices();
+	//for (size_t i = 0; i < mesh.numFaceVertices(); i++)
+	//{
+	//	Vertex tempVert;
+	//	tempVert.position.x = rawVertices[i * 3];
+	//	tempVert.position.y = rawVertices[i * 3 + 1];
+	//	tempVert.position.z = rawVertices[i * 3 + 2];
+	//	tempVert.normal.x = rawNormals[i * 3];
+	//	tempVert.normal.y = rawNormals[i * 3 + 1];
+	//	tempVert.normal.z = rawNormals[i * 3 + 2];
+	//	tempVertices.push_back(tempVert);
+	//	memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
+	//	offset += sizeof(Vertex);
+	//}
+	unsigned int * indices = new unsigned int[meshMessage.indexCount];
+	for (size_t i = 0; i < TriIndices.length(); i++)
 	{
 		Vertex tempVert;
+		tempVert.position.x = -rawVertices[triangleVerts[i] * 3];
+		tempVert.position.y = rawVertices[triangleVerts[i] * 3 + 1];
+		tempVert.position.z = rawVertices[triangleVerts[i] * 3 + 2];
+		tempVert.normal.x = rawNormals[normalList[TriIndices[i]] * 3];
+		tempVert.normal.y = rawNormals[normalList[TriIndices[i]] * 3 + 1];
+		tempVert.normal.z = rawNormals[normalList[TriIndices[i]] * 3 + 2];
 
-		tempVert.position.x = -rawVertices[i * 3];
-		tempVert.position.y = rawVertices[i * 3 + 1];
-		tempVert.position.z = rawVertices[i * 3 + 2];
-		tempVert.normal.x = normals[i].z * -1;
-		tempVert.normal.y = normals[i].y * -1;
-		tempVert.normal.z = normals[i].x * -1;
-		tempVert.binormal.x = biNormals[i].x;
-		tempVert.binormal.y = biNormals[i].y;
-		tempVert.binormal.z = biNormals[i].z;
-		tempVert.tangent.x = tangents[i].x;
-		tempVert.tangent.y = tangents[i].y;
-		tempVert.tangent.z = tangents[i].z;
-		tempVert.uv.x = U[i];
-		tempVert.uv.y = V[i];
+		tempVert.binormal.x = biNormals[normalList[TriIndices[i]]].x;
+		tempVert.binormal.y = biNormals[normalList[TriIndices[i]]].y;
+		tempVert.binormal.z = biNormals[normalList[TriIndices[i]]].z;
+		tempVert.tangent.x = tangents[normalList[TriIndices[i]]].x;
+		tempVert.tangent.y = tangents[normalList[TriIndices[i]]].y;
+		tempVert.tangent.z = tangents[normalList[TriIndices[i]]].z;
+		tempVert.uv.x = U[vertList[TriIndices[i]]];
+		tempVert.uv.y = V[vertList[TriIndices[i]]];
+
+		indices[i] = i;
 
 		tempVertices.push_back(tempVert);
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
 	}
 
-	//Indices
-	unsigned int * indices = new unsigned int[meshMessage.indexCount];
+	////Indices
+	//unsigned int * indices = new unsigned int[meshMessage.indexCount];
 
-	for (size_t i = 0; i < triangleVerts.length() / 3; i++)
-	{
-		indices[i * 3]     = triangleVerts[i*3 + 0];
-		indices[i * 3 + 1] = triangleVerts[i*3 + 1];	 //notice the shift, the order is different in DirectX, so we change it here
-		indices[i * 3 + 2] = triangleVerts[i*3 + 2];
-	}
+	//for (size_t i = 0; i < triangleVerts.length() / 3; i++)
+	//{
+	//	indices[i * 3]     = triangleVerts[i*3 + 0];
+	//	indices[i * 3 + 1] = triangleVerts[i*3 + 1];	 //notice the shift, the order is different in DirectX, so we change it here
+	//	indices[i * 3 + 2] = triangleVerts[i*3 + 2];
+	//}
 	memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
 
 bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, 
