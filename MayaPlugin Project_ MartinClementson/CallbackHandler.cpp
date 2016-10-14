@@ -108,9 +108,9 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		tempVert.position.x = -rawVertices[i * 3];
 		tempVert.position.y = rawVertices[i * 3 + 1];
 		tempVert.position.z = rawVertices[i * 3 + 2];
-		tempVert.normal.x = normals[i].z;
-		tempVert.normal.y = normals[i].y;
-		tempVert.normal.z = normals[i].x;
+		tempVert.normal.x = normals[i].z * -1;
+		tempVert.normal.y = normals[i].y * -1;
+		tempVert.normal.z = normals[i].x * -1;
 		tempVert.binormal.x = biNormals[i].x;
 		tempVert.binormal.y = biNormals[i].y;
 		tempVert.binormal.z = biNormals[i].z;
