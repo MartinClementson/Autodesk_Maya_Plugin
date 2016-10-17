@@ -27,9 +27,16 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 {
 	MeshMessage meshMessage;
 	string name = mesh.name().asChar();
+	if (name == "")
+		return false;
+
 	string command = "setAttr " + name + ".quadSplit 1";
 
 	MGlobal::executeCommandStringResult(MString(command.c_str()));
+	
+	//string command2 = "polyTriangulate -ch 1 " + name;
+
+	//MGlobal::executeCommandStringResult(MString(command2.c_str()));
 
 	MFnTransform obj(mesh.parent(0));
 	MMatrix matrix       = obj.transformationMatrix();
@@ -51,7 +58,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	memcpy(meshMessage.nodeName, obj.name().asChar(), meshMessage.nameLength);
 	meshMessage.nodeName[meshMessage.nameLength] = '\0';
 	//use the transformnode name, since that is the id in the renderer
-	meshMessage.vertexCount = mesh.numFaceVertices();
+	meshMessage.vertexCount = triangleVerts.length();
 
 	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
 
@@ -88,31 +95,26 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	mesh.getUVs(V, U, 0); //changing U and V positions to align with D3D11. 0 stands for what UV set to use (default 0)
 
 	//combtime new
-	vector<Vertex> tempVertices;
-	tempVertices.reserve(36);
+	vector<Vertex> testing;
+	testing.reserve(36);
 	MIntArray triCount, TriIndices;
 	mesh.getTriangleOffsets(triCount, TriIndices);
 	MIntArray vertCount, vertList;
 	mesh.getVertices(vertCount, vertList);
 	MIntArray normCount, normalList;
 	mesh.getNormalIds(normCount, normalList);
-	int test = TriIndices.length();
+	int test1 = TriIndices.length();
 	int test2 = mesh.numFaceVertices();
-	//for (size_t i = 0; i < mesh.numFaceVertices(); i++)
-	//{
-	//	Vertex tempVert;
-	//	tempVert.position.x = rawVertices[i * 3];
-	//	tempVert.position.y = rawVertices[i * 3 + 1];
-	//	tempVert.position.z = rawVertices[i * 3 + 2];
-	//	tempVert.normal.x = rawNormals[i * 3];
-	//	tempVert.normal.y = rawNormals[i * 3 + 1];
-	//	tempVert.normal.z = rawNormals[i * 3 + 2];
-	//	tempVertices.push_back(tempVert);
-	//	memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
-	//	offset += sizeof(Vertex);
-	//}
+	int test3 = triangleVerts.length();
+	int test4 = mesh.numPolygons();
+
+	std::cerr << test1 << endl;
+	std::cerr << test2 << endl;
+	std::cerr << test3 << endl;
+	std::cerr << test4 << endl;
+
 	unsigned int * indices = new unsigned int[meshMessage.indexCount];
-	for (size_t i = 0; i < TriIndices.length(); i++)
+	for (size_t i = 0; i < triangleVerts.length(); i++)
 	{
 		Vertex tempVert;
 		tempVert.position.x = -rawVertices[triangleVerts[i] * 3];
@@ -132,8 +134,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		tempVert.uv.y = V[vertList[TriIndices[i]]];
 
 		indices[i] = i;
-
-		tempVertices.push_back(tempVert);
+		testing.push_back(tempVert);
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
 	}
@@ -401,14 +402,12 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 		
 		std::cerr << nodeHandle.fullPathName() << std::endl;
 	
-
-		if (!CallbackHandler::SendMesh(mesh))
-		{
-			queueMutex.lock();
-			meshToSendQueue.push(node);
-			queueMutex.unlock();
-		}
-		
+			if (!CallbackHandler::SendMesh(mesh))
+			{
+				queueMutex.lock();
+				meshToSendQueue.push(node);
+				queueMutex.unlock();
+			}
 	
 		if (MS::kSuccess == result)
 		{
