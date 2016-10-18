@@ -33,10 +33,6 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	string command = "setAttr " + name + ".quadSplit 1";
 
 	MGlobal::executeCommandStringResult(MString(command.c_str()));
-	
-	//string command2 = "polyTriangulate -ch 1 " + name;
-
-	//MGlobal::executeCommandStringResult(MString(command2.c_str()));
 
 	MFnTransform obj(mesh.parent(0));
 	MMatrix matrix       = obj.transformationMatrix();
@@ -93,26 +89,13 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	//UVs
 	MFloatArray U, V;
 	mesh.getUVs(V, U, 0); //changing U and V positions to align with D3D11. 0 stands for what UV set to use (default 0)
-
 	//combtime new
-	vector<Vertex> testing;
-	testing.reserve(36);
 	MIntArray triCount, TriIndices;
 	mesh.getTriangleOffsets(triCount, TriIndices);
 	MIntArray vertCount, vertList;
 	mesh.getVertices(vertCount, vertList);
 	MIntArray normCount, normalList;
 	mesh.getNormalIds(normCount, normalList);
-	int test1 = TriIndices.length();
-	int test2 = mesh.numFaceVertices();
-	int test3 = triangleVerts.length();
-	int test4 = mesh.numPolygons();
-
-	std::cerr << test1 << endl;
-	std::cerr << test2 << endl;
-	std::cerr << test3 << endl;
-	std::cerr << test4 << endl;
-
 	unsigned int * indices = new unsigned int[meshMessage.indexCount];
 	for (size_t i = 0; i < triangleVerts.length(); i++)
 	{
@@ -134,7 +117,6 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		tempVert.uv.y = V[vertList[TriIndices[i]]];
 
 		indices[i] = i;
-		testing.push_back(tempVert);
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
 	}
@@ -284,25 +266,28 @@ bool CallbackHandler::Init()
 void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
 {
 
-	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && !plug.isArray() && plug.isElement()) //if a specific vert has changed
+	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && plug.isArray() && !plug.isElement()) //if a specific vert has changed
 	{
 		MStringArray changes;
 		MFnNumericData point(plug.attribute());
 		std::cerr << plug.info() << std::endl;
 
 		plug.getSetAttrCmds(changes, MPlug::kChanged);
-		if (changes.length() == 1)
-		{
+		//for (size_t i = 0; i < changes.length(); i++)
+		//{
+			//if (changes.length() == 1)
+			//{
 
 
-			float x, y, z;
-			point.getData3Float(x, y, z);
-			x = plug.child(0).asFloat();
-			y = plug.child(1).asFloat();
-			z = plug.child(2).asFloat();
-			std::cerr << "A Vert has changed!! |" << x << "," << y << "," << z << "|  " << changes << std::endl;
+				float x, y, z;
+				point.getData3Float(x, y, z);
+				x = plug.child(0).asFloat();
+				y = plug.child(1).asFloat();
+				z = plug.child(2).asFloat();
+				std::cerr << "A Vert has changed!! |" << x << "," << y << "," << z << "|  " << std::endl << changes << std::endl;
 
-		}
+			//}
+		//}
 	}
 }
 
@@ -448,8 +433,8 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		MString focusedPanel = MGlobal::executeCommandStringResult("getPanel -wf");
 		std::cerr << "Panel callback : " << str.asChar()          << std::endl;
 		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
-	//if (str == focusedPanel)
-	//{
+	if (str == focusedPanel)
+	{
 		
 		CameraMessage header;
 		M3dView viewport;//= M3dView::active3dView();
@@ -503,7 +488,7 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		memcpy(newHeader, &header, sizeof(CameraMessage));
 	
 		MessageHandler::GetInstance()->SendNewMessage(newHeader, MessageType::CAMERA);
-	//}
+	}
 
 }
 
