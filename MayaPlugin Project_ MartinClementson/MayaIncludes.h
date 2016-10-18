@@ -34,6 +34,8 @@
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MFnMatrixData.h>
 #include <maya/MFloatMatrix.h>
+#include <maya/MItSelectionList.h>
+#include <maya/MItMeshVertex.h>
 
 // Wrappers
 #include <maya/MGlobal.h>
@@ -51,6 +53,7 @@
 #include <maya/MUiMessage.h>
 #include <maya/MPlug.h>
 #include <maya/MModelMessage.h>
+
 
 // Commands
 #include <maya/MPxCommand.h>

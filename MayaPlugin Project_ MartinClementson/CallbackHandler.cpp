@@ -265,29 +265,60 @@ bool CallbackHandler::Init()
 
 void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
 {
+		std::cerr << "Found Possible Vertex Movement!" << std::endl;
+		MSelectionList selectionList;
+		MGlobal::getActiveSelectionList(selectionList);
+		MItSelectionList iterator(selectionList);
 
-	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && plug.isArray() && !plug.isElement()) //if a specific vert has changed
+	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && !plug.isArray() && plug.isElement()) //if a specific vert has changed
 	{
-		MStringArray changes;
-		MFnNumericData point(plug.attribute());
-		std::cerr << plug.info() << std::endl;
+		std::cerr << "Found Vertex Movement!" << std::endl;
+		MDagPath item;
+		MObject component, node;
+		iterator.getDagPath(item, component);
+		iterator.getDagPath(item);
 
-		plug.getSetAttrCmds(changes, MPlug::kChanged);
-		//for (size_t i = 0; i < changes.length(); i++)
-		//{
-			//if (changes.length() == 1)
-			//{
+		node = plug.node();
+		MFnMesh mesh = node;
+		MString meshName = mesh.name().asChar();
 
 
-				float x, y, z;
-				point.getData3Float(x, y, z);
-				x = plug.child(0).asFloat();
-				y = plug.child(1).asFloat();
-				z = plug.child(2).asFloat();
-				std::cerr << "A Vert has changed!! |" << x << "," << y << "," << z << "|  " << std::endl << changes << std::endl;
+		MPoint point, sPoint;
+		mesh.getPoint(plug.logicalIndex(), point);
+		MItMeshVertex iteratorMeshVert(item, component);
+		sPoint = iteratorMeshVert.position();
 
-			//}
-		//}
+		unsigned int offset = sizeof(VertSegmentMessage);
+
+		if (point == sPoint)
+		{
+			MIntArray offsetId, indexList;
+			mesh.getTriangles(offsetId, indexList);
+			MFnTransform transform = mesh.parent(0);
+
+			Vertex tempVert;
+			VertSegmentMessage vertSegMessasge;
+			memcpy(vertSegMessasge.nodeName, mesh.name().asChar(), mesh.name().length());
+			vertSegMessasge.nameLength = mesh.name().length();
+			vertSegMessasge.nodeName[vertSegMessasge.nameLength] = '\0';
+			vertSegMessasge.numVertices = iteratorMeshVert.count();
+			memcpy(meshDataToSend, &vertSegMessasge, sizeof(VertSegmentMessage));
+
+			tempVert.position.x = -point.x;
+			tempVert.position.y = point.y;
+			tempVert.position.z = point.z;
+
+			//needs normals here later
+
+			VertexMessage vertMessage;
+			vertMessage.indexId = plug.logicalIndex();
+			vertMessage.vert = tempVert;
+			memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
+			offset += sizeof(VertexMessage);
+
+			MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
+			MessageType::VERTSEGMENT);
+		}
 	}
 }
 
