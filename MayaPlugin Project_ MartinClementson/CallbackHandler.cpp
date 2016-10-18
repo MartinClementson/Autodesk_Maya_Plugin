@@ -159,82 +159,105 @@ bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
 }
 
 
-bool CallbackHandler::SendMaterial(MObject material)
+bool CallbackHandler::SendMaterial(MaterialMessage& material)
 {
-	MObjectArray sets;
+	//char dataTosend[sizeof(MaterialMessage)];
+	//
+	//memcpy(dataTosend, material, sizeof(MaterialMessage));
 
-	/*MObject shaderNode = findShader()
-	if (material != MObject::kNullObj)
-	{
+	bool result = MessageHandler::GetInstance()->SendNewMessage((char*)&material, MessageType::MATERIAL);
 
-		float rgb[3];
-		MPlug colorPlug = MFnDependencyNode(material).findPlug("color")
-	*/
-	}
+	
+	return result;
+}
 
-	bool CallbackHandler::GetMaterialFromMesh(MFnMesh & mesh)
-	{
-
-		MObjectArray sets;
-		MObjectArray comps;
-		unsigned int instanceNum = mesh.dagPath().instanceNumber();
-		if (!mesh.getConnectedSetsAndMembers(instanceNum, sets, comps, true))
-			return false;
-		/*
-		getConnectedSetsAndMembers()
-		Returns all the sets connected to the specified instance of this DAG object.
-		For each set in the "sets" array there is a corresponding entry in the "comps" array which are all the components in that set. If the entire object is in a set, 
-		then the corresponding entry in the comps array will have no elements in it.
-		*/
-		
-		if (sets.length())
+ bool CallbackHandler::GetMaterialFromMesh(MFnMesh & mesh)
+ {
+ 
+ 	MObjectArray sets;
+ 	MObjectArray comps;
+ 	unsigned int instanceNum = mesh.dagPath().instanceNumber();
+ 	if (!mesh.getConnectedSetsAndMembers(instanceNum, sets, comps, true))
+ 		return false;
+ 	/*
+ 	getConnectedSetsAndMembers()
+ 	Returns all the sets connected to the specified instance of this DAG object.
+ 	For each set in the "sets" array there is a corresponding entry in the "comps" array which are all the components in that set. If the entire object is in a set, 
+ 	then the corresponding entry in the comps array will have no elements in it.
+ 	*/
+ 	
+ 	if (sets.length())
+ 	{
+ 		MObject set = sets[0];
+ 		MObject comp = comps[0];
+ 
+ 
+ 		MStatus status;
+ 
+ 		MaterialMessage material;
+ 
+ 		MObject shaderNode = findShader(set);
+		if (shaderNode != MObject::kNullObj)
 		{
-			MObject set = sets[0];
-			MObject comp = comps[0];
-
-
-			MStatus status;
-
-			MaterialMessage material;
-
-			MObject shaderNode = findShader(set);
-			if (shaderNode != MObject::kNullObj)
+			float rgb[3];
+			MString matName = MFnDependencyNode(shaderNode).name();
+			memcpy(material.matName, matName.asChar(), matName.length());
+			std::cerr << "Shader name : " << material.matName << std::endl;
+			MPlug colorPlug = MFnDependencyNode(shaderNode).findPlug("color", &status);
+			if (status != MS::kFailure)
 			{
-				float rgb[3];
-				MPlug colorPlug = MFnDependencyNode(shaderNode).findPlug("color", &status);
-				if (status != MS::kFailure)
+				MItDependencyGraph It(colorPlug, MFn::kFileTexture, MItDependencyGraph::kUpstream);
+				if (!It.isDone())
 				{
-					MItDependencyGraph It(colorPlug, MFn::kFileTexture, MItDependencyGraph::kUpstream);
-					if (!It.isDone())
+					// Get the filename
+					MString filename;
+					MFnDependencyNode(It.thisNode()).findPlug("fileTextureName").getValue(filename);
+					if (filename.length())
 					{
-						
+						if (filename.length() > 256)
+						{
+							std::cerr << "Texture path :" << filename.asChar() << "\n"
+								<< " is too long! Consider changing the name" << std::endl;
+							return false;
+						}
+						//A texture exists
+						memcpy(material.texturePath, filename.asChar(), filename.length());
+						std::cerr << "Texture map is : " << material.texturePath << std::endl;
+						material.hasTexture = true;
 					}
-					else
-					{
-						MObject data;
-						colorPlug.getValue(data);
-						MFnNumericData val(data);
-						val.getData(rgb[0], rgb[1], rgb[2]);
-
-					}
+					material.hasTexture = false;
 
 				}
+				else
+				{
+					//No texture exists, get the rgb values
+					MObject data;
+					colorPlug.getValue(data);
+					MFnNumericData val(data);
+					val.getData(rgb[0], rgb[1], rgb[2]);
+					material.diffuse = Float3(rgb[0], rgb[1], rgb[2]);
+
+				}
+
 			}
+			else
+				return false;
 
-
+			return SendMaterial(material);
 		}
-
-
-		return false;
-	}
-
-	// Get the filename
-	//MString filename;
-	//MFnDependencyNode(material).findPlug("fileTextureName").getValue(filename);
-	//if (filename.length())
+		else
+			return false;
+ 
+ 
+ 	}
+ 
+ // Get the filename
+ //MString filename;
+ //MFnDependencyNode(material).findPlug("fileTextureName").getValue(filename);
+ //if (filename.length())
+ 
 	
-
-	return false;
+ return true;
 }
 
 CallbackHandler::CallbackHandler()
@@ -326,7 +349,7 @@ bool CallbackHandler::Init()
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(meshIt.currentItem(), VertChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 		MFnMesh mesh(meshIt.currentItem());
 		
-
+		GetMaterialFromMesh(mesh);
 	//string name = mesh.name().asChar();
 	//string command = "setAttr " + name +".quadSplit 1";
 	//MGlobal::executeCommandStringResult(MString(command.c_str()));

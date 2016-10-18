@@ -54,8 +54,18 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(TransformMessage));
 		break;			 
 	}
-	case MATERIAL:		 
+	case MATERIAL:		
+	{
+		mainHead.messageType = MATERIAL;
+		mainHead.msgSize	 = sizeof(MaterialMessage);
+
+		char newMessage[sizeof(MainMessageHeader) + sizeof(MaterialMessage)];
+		memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));
+		memcpy(newMessage + sizeof(MainMessageHeader), msg, sizeof(MaterialMessage));	 //merge the message and the header
+
+		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(MaterialMessage));
 		break;	
+	}
 
 	case DELETION:
 	{

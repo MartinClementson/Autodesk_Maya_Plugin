@@ -8,3 +8,7 @@ MTexture
 {	
 	där finns, raw data,
 }
+
+TODO:
+Gör en static view matris, vid varje viewPortRender callback, jämför med den statiska matrisen
+kolla om kamera har ändrats. om det har, så uppdateras matrisen
