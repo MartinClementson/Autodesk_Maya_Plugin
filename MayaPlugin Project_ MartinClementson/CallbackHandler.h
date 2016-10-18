@@ -26,6 +26,8 @@ public:
 	bool Init();
 	static CallbackHandler* GetInstance() { static CallbackHandler instance; return &instance; }
 	static bool SendMesh(MFnMesh& mesh);
+	static bool SendMaterial(MObject material);
+	static bool GetMaterialFromMesh(MFnMesh& mesh);
 #pragma region Callback functions
 static void VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug& otherPlug, void *);
 static void WorldMatrixChanged(MObject & transformNode, MDagMessage::MatrixModifiedFlags & modified, void * clientData);

@@ -1,0 +1,10 @@
+för att hämta en textur
+
+MShaderInstance ->resourceName
+
+eller
+
+MTexture
+{	
+	där finns, raw data,
+}

@@ -34,6 +34,7 @@
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MFnMatrixData.h>
 #include <maya/MFloatMatrix.h>
+#include <maya/MItDependencyGraph.h>
 
 // Wrappers
 #include <maya/MGlobal.h>

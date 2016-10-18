@@ -169,3 +169,16 @@ struct DeleteMessage
 	char nodeName[256];
 	unsigned int nameLength;
 };
+
+struct MaterialMessage
+{
+	char matName[256];
+	char texturePath[256];
+	bool hasTexture;
+	Float3 diffuse;
+	Float3 ambient;
+	Float3 specularRGB;
+	float specularVal;
+	
+
+};

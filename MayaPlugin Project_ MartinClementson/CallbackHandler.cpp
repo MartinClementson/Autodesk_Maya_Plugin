@@ -22,6 +22,23 @@ inline void UpdateChildren(MFnTransform& transformNode)
 
 }
 
+inline MObject findShader(MObject& setNode)
+{
+	MFnDependencyNode fnNode(setNode);
+	MPlug shaderPlug = fnNode.findPlug("surfaceShader");
+	if (!shaderPlug.isNull())
+	{
+		MPlugArray connectedPlugs;
+		bool asSrc = false;
+		bool asDst = true;
+		shaderPlug.connectedTo(connectedPlugs, asDst, asSrc);
+		if (connectedPlugs.length() != 1)
+			return MObject::kNullObj;
+		else
+			return connectedPlugs[0].node();
+
+	}
+}
 
 bool CallbackHandler::SendMesh(MFnMesh & mesh)
 {
@@ -139,6 +156,85 @@ bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
 	delete indices;
 	std::cerr << "Result returns : " << result << std::endl;
 	return result;
+}
+
+
+bool CallbackHandler::SendMaterial(MObject material)
+{
+	MObjectArray sets;
+
+	/*MObject shaderNode = findShader()
+	if (material != MObject::kNullObj)
+	{
+
+		float rgb[3];
+		MPlug colorPlug = MFnDependencyNode(material).findPlug("color")
+	*/
+	}
+
+	bool CallbackHandler::GetMaterialFromMesh(MFnMesh & mesh)
+	{
+
+		MObjectArray sets;
+		MObjectArray comps;
+		unsigned int instanceNum = mesh.dagPath().instanceNumber();
+		if (!mesh.getConnectedSetsAndMembers(instanceNum, sets, comps, true))
+			return false;
+		/*
+		getConnectedSetsAndMembers()
+		Returns all the sets connected to the specified instance of this DAG object.
+		For each set in the "sets" array there is a corresponding entry in the "comps" array which are all the components in that set. If the entire object is in a set, 
+		then the corresponding entry in the comps array will have no elements in it.
+		*/
+		
+		if (sets.length())
+		{
+			MObject set = sets[0];
+			MObject comp = comps[0];
+
+
+			MStatus status;
+
+			MaterialMessage material;
+
+			MObject shaderNode = findShader(set);
+			if (shaderNode != MObject::kNullObj)
+			{
+				float rgb[3];
+				MPlug colorPlug = MFnDependencyNode(shaderNode).findPlug("color", &status);
+				if (status != MS::kFailure)
+				{
+					MItDependencyGraph It(colorPlug, MFn::kFileTexture, MItDependencyGraph::kUpstream);
+					if (!It.isDone())
+					{
+						
+					}
+					else
+					{
+						MObject data;
+						colorPlug.getValue(data);
+						MFnNumericData val(data);
+						val.getData(rgb[0], rgb[1], rgb[2]);
+
+					}
+
+				}
+			}
+
+
+		}
+
+
+		return false;
+	}
+
+	// Get the filename
+	//MString filename;
+	//MFnDependencyNode(material).findPlug("fileTextureName").getValue(filename);
+	//if (filename.length())
+	
+
+	return false;
 }
 
 CallbackHandler::CallbackHandler()
@@ -373,12 +469,8 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 		}
 	}
 
-
 	if (node.hasFn(MFn::kMesh))
 	{
-
-
-
 		MFnMesh mesh(node);
 		
 		MFnDagNode nodeHandle(node);
@@ -416,11 +508,7 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 			
 			std::cerr << "Polychange callback added!  "  << std::endl;
 		}
-
-
 	}
-
-
 }
 
 void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
