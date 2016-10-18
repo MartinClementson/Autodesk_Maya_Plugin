@@ -27,32 +27,27 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 {
 	MeshMessage meshMessage;
 	string name = mesh.name().asChar();
+	if (name == "")
+		return false;
+
 	string command = "setAttr " + name + ".quadSplit 1";
 
 	MGlobal::executeCommandStringResult(MString(command.c_str()));
+	
+	//string command2 = "polyTriangulate -ch 1 " + name;
+
+	//MGlobal::executeCommandStringResult(MString(command2.c_str()));
 
 	MFnTransform obj(mesh.parent(0));
 	MMatrix matrix       = obj.transformationMatrix();
 	size_t sizeOfMessage = sizeof(MeshMessage);
 	unsigned int offset  = sizeof(MeshMessage); //byte offset when storing the data to the char array
 
-	MPointArray vertices;
-
 	for (size_t row = 0; row < 4; row++)
-	{
 		for (size_t column = 0; column < 4; column++)
-		{
 			meshMessage.worldMatrix[(4 * row) + column] = (float)matrix.matrix[row][column];
-		}
-	}
-	
-	if(MStatus::kFailure == mesh.getPoints(vertices,MSpace::kObject))
-	{	
-		MGlobal::displayError("MFnMesh::getPoints");
-		std::cerr << "ERROR GETTING POINTS  " << std::endl;
-		return false;
-	}
-	
+
+
 	MIntArray numTriangles;
 	MIntArray triangleVerts;
 	mesh.getTriangles(numTriangles, triangleVerts);
@@ -62,39 +57,98 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	meshMessage.nameLength = obj.name().length();
 	memcpy(meshMessage.nodeName, obj.name().asChar(), meshMessage.nameLength);
 	meshMessage.nodeName[meshMessage.nameLength] = '\0';
-	 //use the transformnode name, since that is the id in the renderer
-	meshMessage.vertexCount = mesh.numVertices();
-	
+	//use the transformnode name, since that is the id in the renderer
+	meshMessage.vertexCount = triangleVerts.length();
 
 	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
 
-	for (size_t i = 0; i < meshMessage.vertexCount; i++)
+	//Raw vertices
+	const float* rawVertices = mesh.getRawPoints(0);
+	//Raw normals
+	const float* rawNormals = mesh.getRawNormals(0);
+	//BiNormals
+	vector<MFloatVector> biNormals;
+	biNormals.reserve(mesh.numFaceVertices());
+	MFloatVectorArray faceBiNormals;
+	for (size_t i = 0; i < mesh.numPolygons(); i++)
+	{
+		mesh.getFaceVertexBinormals(i, faceBiNormals, MSpace::kObject);
+		for (size_t j = 0; j < faceBiNormals.length(); j++)
+		{
+			biNormals.push_back(faceBiNormals[j]);
+		}
+	}
+	//Tangents
+	vector<MFloatVector> tangents;
+	tangents.reserve(mesh.numFaceVertices());
+	MFloatVectorArray faceTangents;
+	for (size_t i = 0; i < mesh.numPolygons(); i++)
+	{
+		mesh.getFaceVertexTangents(i, faceTangents, MSpace::kObject);
+		for (size_t j = 0; j < faceTangents.length(); j++)
+		{
+			tangents.push_back(faceTangents[j]);
+		}
+	}
+	//UVs
+	MFloatArray U, V;
+	mesh.getUVs(V, U, 0); //changing U and V positions to align with D3D11. 0 stands for what UV set to use (default 0)
+
+	//combtime new
+	vector<Vertex> testing;
+	testing.reserve(36);
+	MIntArray triCount, TriIndices;
+	mesh.getTriangleOffsets(triCount, TriIndices);
+	MIntArray vertCount, vertList;
+	mesh.getVertices(vertCount, vertList);
+	MIntArray normCount, normalList;
+	mesh.getNormalIds(normCount, normalList);
+	int test1 = TriIndices.length();
+	int test2 = mesh.numFaceVertices();
+	int test3 = triangleVerts.length();
+	int test4 = mesh.numPolygons();
+
+	std::cerr << test1 << endl;
+	std::cerr << test2 << endl;
+	std::cerr << test3 << endl;
+	std::cerr << test4 << endl;
+
+	unsigned int * indices = new unsigned int[meshMessage.indexCount];
+	for (size_t i = 0; i < triangleVerts.length(); i++)
 	{
 		Vertex tempVert;
-		tempVert.position.x =	-vertices[i].x;
-		tempVert.position.y =	vertices[i].y;
-		tempVert.position.z =	vertices[i].z;
+		tempVert.position.x = -rawVertices[triangleVerts[i] * 3];
+		tempVert.position.y = rawVertices[triangleVerts[i] * 3 + 1];
+		tempVert.position.z = rawVertices[triangleVerts[i] * 3 + 2];
+		tempVert.normal.x = rawNormals[normalList[TriIndices[i]] * 3];
+		tempVert.normal.y = rawNormals[normalList[TriIndices[i]] * 3 + 1];
+		tempVert.normal.z = rawNormals[normalList[TriIndices[i]] * 3 + 2];
+
+		tempVert.binormal.x = biNormals[normalList[TriIndices[i]]].x;
+		tempVert.binormal.y = biNormals[normalList[TriIndices[i]]].y;
+		tempVert.binormal.z = biNormals[normalList[TriIndices[i]]].z;
+		tempVert.tangent.x = tangents[normalList[TriIndices[i]]].x;
+		tempVert.tangent.y = tangents[normalList[TriIndices[i]]].y;
+		tempVert.tangent.z = tangents[normalList[TriIndices[i]]].z;
+		tempVert.uv.x = U[vertList[TriIndices[i]]];
+		tempVert.uv.y = V[vertList[TriIndices[i]]];
+
+		indices[i] = i;
+		testing.push_back(tempVert);
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
-	//	std::cerr << "x: " << vertices[i].x << " y: " << vertices[i].y << " z: " << vertices[i].z << " "  << std::endl;
-	}
-	
-	unsigned int * indices = new unsigned int[meshMessage.indexCount];
-
-	for (size_t i = 0; i < triangleVerts.length() / 3; i++)
-	{
-		
-		indices[i * 3]     = triangleVerts[i*3 + 0];
-		indices[i * 3 + 1] = triangleVerts[i*3 + 1];	 //notice the shift, the order is different in DirectX, so we change it here
-		indices[i * 3 + 2] = triangleVerts[i*3 + 2];
-
 	}
 
+	////Indices
+	//unsigned int * indices = new unsigned int[meshMessage.indexCount];
+
+	//for (size_t i = 0; i < triangleVerts.length() / 3; i++)
+	//{
+	//	indices[i * 3]     = triangleVerts[i*3 + 0];
+	//	indices[i * 3 + 1] = triangleVerts[i*3 + 1];	 //notice the shift, the order is different in DirectX, so we change it here
+	//	indices[i * 3 + 2] = triangleVerts[i*3 + 2];
+	//}
 	memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
-
-
-
-
 
 bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, 
 		MessageType::MESH, 
@@ -348,14 +402,12 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 		
 		std::cerr << nodeHandle.fullPathName() << std::endl;
 	
-
-		if (!CallbackHandler::SendMesh(mesh))
-		{
-			queueMutex.lock();
-			meshToSendQueue.push(node);
-			queueMutex.unlock();
-		}
-		
+			if (!CallbackHandler::SendMesh(mesh))
+			{
+				queueMutex.lock();
+				meshToSendQueue.push(node);
+				queueMutex.unlock();
+			}
 	
 		if (MS::kSuccess == result)
 		{
