@@ -26,7 +26,7 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 		delete newMessage;
 		break;			 
 	}
-	case VERTSEGMENT:	 
+	case VERTSEGMENT:	//IMPLEMENT MEEEE
 		break;			 
 	case VERTEX:		 
 		break;			 
