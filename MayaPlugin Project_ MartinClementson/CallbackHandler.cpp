@@ -115,6 +115,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		tempVert.tangent.z = tangents[normalList[TriIndices[i]]].z;
 		tempVert.uv.x = U[vertList[TriIndices[i]]];
 		tempVert.uv.y = V[vertList[TriIndices[i]]];
+		tempVert.logicalIndex = triangleVerts[i];
 
 		indices[i] = i;
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
@@ -266,58 +267,61 @@ bool CallbackHandler::Init()
 void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
 {
 		std::cerr << "Found Possible Vertex Movement!" << std::endl;
-		MSelectionList selectionList;
-		MGlobal::getActiveSelectionList(selectionList);
-		MItSelectionList iterator(selectionList);
 
 	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && !plug.isArray() && plug.isElement()) //if a specific vert has changed
 	{
 		std::cerr << "Found Vertex Movement!" << std::endl;
+		MSelectionList selectionList;
+		MGlobal::getActiveSelectionList(selectionList);
+		MItSelectionList iterator(selectionList);
 		MDagPath item;
 		MObject component, node;
 		iterator.getDagPath(item, component);
 		iterator.getDagPath(item);
-
 		node = plug.node();
 		MFnMesh mesh = node;
-		MString meshName = mesh.name().asChar();
-
-
+		MFnTransform obj(mesh.parent(0));
+		MString meshName = obj.name().asChar();
 		MPoint point, sPoint;
 		mesh.getPoint(plug.logicalIndex(), point);
 		MItMeshVertex iteratorMeshVert(item, component);
 		sPoint = iteratorMeshVert.position();
 
-		unsigned int offset = sizeof(VertSegmentMessage);
-
 		if (point == sPoint)
 		{
-			MIntArray offsetId, indexList;
-			mesh.getTriangles(offsetId, indexList);
-			MFnTransform transform = mesh.parent(0);
-
-			Vertex tempVert;
 			VertSegmentMessage vertSegMessasge;
-			memcpy(vertSegMessasge.nodeName, mesh.name().asChar(), mesh.name().length());
-			vertSegMessasge.nameLength = mesh.name().length();
+			memcpy(vertSegMessasge.nodeName, meshName.asChar(), mesh.name().length());
+			vertSegMessasge.nameLength = meshName.length();
 			vertSegMessasge.nodeName[vertSegMessasge.nameLength] = '\0';
 			vertSegMessasge.numVertices = iteratorMeshVert.count();
 			memcpy(meshDataToSend, &vertSegMessasge, sizeof(VertSegmentMessage));
 
-			tempVert.position.x = -point.x;
-			tempVert.position.y = point.y;
-			tempVert.position.z = point.z;
+			unsigned int offset = sizeof(VertSegmentMessage);
 
-			//needs normals here later
+			for (; !iteratorMeshVert.isDone(); iteratorMeshVert.next())
+			{
+				VertexMessage vertMessage;
+				Vertex tempVert;
 
-			VertexMessage vertMessage;
-			vertMessage.indexId = plug.logicalIndex();
-			vertMessage.vert = tempVert;
-			memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
-			offset += sizeof(VertexMessage);
+				MVector normal;
+				iteratorMeshVert.getNormal(normal, MSpace::kObject);
+
+				tempVert.logicalIndex = iteratorMeshVert.index();
+				tempVert.position.x = -iteratorMeshVert.position().x;
+				tempVert.position.y = iteratorMeshVert.position().y;
+				tempVert.position.z = iteratorMeshVert.position().z;
+				tempVert.normal.x = normal.x;	   //
+				tempVert.normal.y = normal.y;	   // Alla vertiser som delar denna point får nu dessa normaler. måste fixa så alla påverkade vertiser får de normaler de ska ha
+				tempVert.normal.z = normal.z;	   //
+
+				vertMessage.indexId = iteratorMeshVert.index();
+				vertMessage.vert = tempVert;
+				memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
+				offset += sizeof(VertexMessage);
+			}
 
 			MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
-			MessageType::VERTSEGMENT);
+			MessageType::VERTSEGMENT, offset);
 		}
 	}
 }
