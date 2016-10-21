@@ -56,14 +56,33 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 	}
 	case MATERIAL:		
 	{
+		
 		mainHead.messageType = MATERIAL;
 		mainHead.msgSize	 = sizeof(MaterialMessage);
+		MaterialMessage* matMsg = (MaterialMessage*)msg;
+		if (matMsg->numTextures > 0)
+		{
+			size_t msgSize = sizeof(MainMessageHeader) + length;
+			char* newMessage = new char[msgSize];
+			memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));
+			memcpy(newMessage + sizeof(MainMessageHeader), msg, length);	 //merge the message and the header
+			
+			result = engineCommunicator.PutMessageIntoBuffer(newMessage, msgSize);
+			delete newMessage;
 
-		char newMessage[sizeof(MainMessageHeader) + sizeof(MaterialMessage)];
-		memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));
-		memcpy(newMessage + sizeof(MainMessageHeader), msg, sizeof(MaterialMessage));	 //merge the message and the header
+			TextureFile* texture = (TextureFile*)(msg + sizeof(MaterialMessage));
+			std::cerr << "The texture that was sent had the path : " << texture->texturePath << std::endl;
 
-		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(MaterialMessage));
+		}
+		else
+		{
+			char newMessage [sizeof(MainMessageHeader) + sizeof(MaterialMessage)];
+			memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));
+			memcpy(newMessage + sizeof(MainMessageHeader), msg, sizeof(MaterialMessage));	 //merge the message and the header
+
+			result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(MaterialMessage));
+
+		}
 		break;	
 	}
 

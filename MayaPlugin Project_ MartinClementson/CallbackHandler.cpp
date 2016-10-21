@@ -40,9 +40,13 @@ inline MObject findShader(MObject& setNode)
 	}
 }
 
-bool CallbackHandler::SendMesh(MFnMesh & mesh)
+bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 {
 	MeshMessage meshMessage;
+	if (materialName != nullptr);
+		memcpy(meshMessage.materialName, materialName, 256);
+
+
 	string name = mesh.name().asChar();
 	if (name == "")
 		return false;
@@ -159,21 +163,36 @@ bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
 }
 
 
-bool CallbackHandler::SendMaterial(MaterialMessage& material)
+bool CallbackHandler::SendMaterial(MaterialMessage* material, TextureFile* textures)
 {
-	//char dataTosend[sizeof(MaterialMessage)];
-	//
-	//memcpy(dataTosend, material, sizeof(MaterialMessage));
+	if (material->numTextures > 0) // if there are textures
+	{
+		size_t msgSize = sizeof(MaterialMessage) + (sizeof(TextureFile) * material->numTextures);
+		char* dataTosend = new char[msgSize];
+		memcpy(dataTosend, material, sizeof(MaterialMessage));
+		memcpy(dataTosend + sizeof(MaterialMessage),
+			textures,
+			sizeof(TextureFile)*material->numTextures);
 
-	bool result = MessageHandler::GetInstance()->SendNewMessage((char*)&material, MessageType::MATERIAL);
+		std::cerr << "The texturepath in ""sendMaterial""  is : " << textures->texturePath << std::endl;
+		bool result = MessageHandler::GetInstance()->SendNewMessage(dataTosend, MessageType::MATERIAL, msgSize);
+
+		delete dataTosend;
+		return result;
+	}
+	else
+	{
+		bool result = MessageHandler::GetInstance()->SendNewMessage((char*)&material, MessageType::MATERIAL,sizeof(MaterialMessage));
+		return result;
+	}
+
 
 	
-	return result;
 }
 
- bool CallbackHandler::GetMaterialFromMesh(MFnMesh & mesh)
+bool CallbackHandler::GetMaterialFromMesh(MFnMesh & mesh, char* matName)
  {
- 
+
  	MObjectArray sets;
  	MObjectArray comps;
  	unsigned int instanceNum = mesh.dagPath().instanceNumber();
@@ -195,13 +214,19 @@ bool CallbackHandler::SendMaterial(MaterialMessage& material)
  		MStatus status;
  
  		MaterialMessage material;
- 
+		TextureFile diffuse;
  		MObject shaderNode = findShader(set);
 		if (shaderNode != MObject::kNullObj)
 		{
+			
 			float rgb[3];
-			MString matName = MFnDependencyNode(shaderNode).name();
-			memcpy(material.matName, matName.asChar(), matName.length());
+			MString mMatName = MFnDependencyNode(shaderNode).name();
+
+			if(matName != nullptr) // if the caller of the function wants the name returned
+				memcpy(matName, mMatName.asChar(), mMatName.length());
+
+
+			memcpy(material.matName, mMatName.asChar(), mMatName.length());
 			std::cerr << "Shader name : " << material.matName << std::endl;
 			MPlug colorPlug = MFnDependencyNode(shaderNode).findPlug("color", &status);
 			if (status != MS::kFailure)
@@ -221,11 +246,12 @@ bool CallbackHandler::SendMaterial(MaterialMessage& material)
 							return false;
 						}
 						//A texture exists
-						memcpy(material.texturePath, filename.asChar(), filename.length());
-						std::cerr << "Texture map is : " << material.texturePath << std::endl;
-						material.hasTexture = true;
+						memcpy(diffuse.texturePath, filename.asChar(), filename.length());
+						std::cerr << "Texture map is : " << diffuse.texturePath << std::endl;
+						diffuse.type = TextureTypes::DIFFUSE;
+						material.numTextures +=1;
 					}
-					material.hasTexture = false;
+					
 
 				}
 				else
@@ -243,7 +269,7 @@ bool CallbackHandler::SendMaterial(MaterialMessage& material)
 			else
 				return false;
 
-			return SendMaterial(material);
+			return SendMaterial(&material,&diffuse);
 		}
 		else
 			return false;
@@ -349,7 +375,9 @@ bool CallbackHandler::Init()
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(meshIt.currentItem(), VertChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 		MFnMesh mesh(meshIt.currentItem());
 		
-		GetMaterialFromMesh(mesh);
+		char materialName[256];
+		memset(materialName, '\0', 256);
+		GetMaterialFromMesh(mesh, materialName);
 	//string name = mesh.name().asChar();
 	//string command = "setAttr " + name +".quadSplit 1";
 	//MGlobal::executeCommandStringResult(MString(command.c_str()));
@@ -373,7 +401,7 @@ bool CallbackHandler::Init()
 
 		
 	
-		CallbackHandler::SendMesh(mesh);
+		CallbackHandler::SendMesh(mesh,materialName);
 		
 	}
 	
