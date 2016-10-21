@@ -29,20 +29,15 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	string name = mesh.name().asChar();
 	if (name == "")
 		return false;
-
 	string command = "setAttr " + name + ".quadSplit 1";
-
 	MGlobal::executeCommandStringResult(MString(command.c_str()));
-
 	MFnTransform obj(mesh.parent(0));
 	MMatrix matrix       = obj.transformationMatrix();
 	size_t sizeOfMessage = sizeof(MeshMessage);
 	unsigned int offset  = sizeof(MeshMessage); //byte offset when storing the data to the char array
-
 	for (size_t row = 0; row < 4; row++)
 		for (size_t column = 0; column < 4; column++)
 			meshMessage.worldMatrix[(4 * row) + column] = (float)matrix.matrix[row][column];
-
 
 	MIntArray numTriangles;
 	MIntArray triangleVerts;
@@ -53,9 +48,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	meshMessage.nameLength = obj.name().length();
 	memcpy(meshMessage.nodeName, obj.name().asChar(), meshMessage.nameLength);
 	meshMessage.nodeName[meshMessage.nameLength] = '\0';
-	//use the transformnode name, since that is the id in the renderer
 	meshMessage.vertexCount = triangleVerts.length();
-
 	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
 
 	//Raw vertices
@@ -100,7 +93,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 	for (size_t i = 0; i < triangleVerts.length(); i++)
 	{
 		Vertex tempVert;
-		tempVert.position.x = -rawVertices[triangleVerts[i] * 3];
+		tempVert.position.x = rawVertices[triangleVerts[i] * 3];
 		tempVert.position.y = rawVertices[triangleVerts[i] * 3 + 1];
 		tempVert.position.z = rawVertices[triangleVerts[i] * 3 + 2];
 		tempVert.normal.x = rawNormals[normalList[TriIndices[i]] * 3];
@@ -121,16 +114,13 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
 	}
-
 	////Indices
-	//unsigned int * indices = new unsigned int[meshMessage.indexCount];
-
-	//for (size_t i = 0; i < triangleVerts.length() / 3; i++)
-	//{
-	//	indices[i * 3]     = triangleVerts[i*3 + 0];
-	//	indices[i * 3 + 1] = triangleVerts[i*3 + 1];	 //notice the shift, the order is different in DirectX, so we change it here
-	//	indices[i * 3 + 2] = triangleVerts[i*3 + 2];
-	//}
+	for (size_t i = 0; i < triangleVerts.length() / 3; i++)
+	{
+		int temp2 = indices[i * 3 + 2];
+		indices[i * 3 + 2] = indices[i * 3 + 1];
+		indices[i * 3 + 1] = temp2;				 //notice the shift, the order is different in DirectX, so we change it here
+	}
 	memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
 
 bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, 
@@ -231,11 +221,6 @@ bool CallbackHandler::Init()
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(meshIt.currentItem(), VertChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 		MFnMesh mesh(meshIt.currentItem());
 		
-
-	//string name = mesh.name().asChar();
-	//string command = "setAttr " + name +".quadSplit 1";
-	//MGlobal::executeCommandStringResult(MString(command.c_str()));
-
 		if (result == MS::kSuccess)
 		{
 			callBackIds.append(polyId);
@@ -266,11 +251,9 @@ bool CallbackHandler::Init()
 
 void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
 {
-		std::cerr << "Found Possible Vertex Movement!" << std::endl;
-
 	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && !plug.isArray() && plug.isElement()) //if a specific vert has changed
 	{
-		std::cerr << "Found Vertex Movement!" << std::endl;
+		std::cerr << "Found Movement!" << std::endl;
 		MSelectionList selectionList;
 		MGlobal::getActiveSelectionList(selectionList);
 		MItSelectionList iterator(selectionList);
@@ -278,16 +261,70 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 		MObject component, node;
 		iterator.getDagPath(item, component);
 		iterator.getDagPath(item);
+
 		node = plug.node();
 		MFnMesh mesh = node;
 		MFnTransform obj(mesh.parent(0));
 		MString meshName = obj.name().asChar();
+
+		MFloatVectorArray normal;
+		mesh.getNormals(normal, MSpace::kObject);
+
+		MIntArray numTriangles;
+		MIntArray triangleVerts;
+		mesh.getTriangles(numTriangles, triangleVerts);
+
+
+		MItMeshPolygon	iteratorMeshPoly(item, component);
+		MItMeshEdge		iteratorMeshEdge(item, component);
+		MItMeshVertex	iteratorMeshVert(item, component);
+
 		MPoint point, sPoint;
 		mesh.getPoint(plug.logicalIndex(), point);
-		MItMeshVertex iteratorMeshVert(item, component);
-		sPoint = iteratorMeshVert.position();
 
-		if (point == sPoint)
+		MPointArray points;
+
+		if (iteratorMeshPoly.count() != 0)
+		{
+			cerr << component.apiTypeStr() << endl;
+			iteratorMeshPoly.getPoints(points, MSpace::kObject);
+			for (; !iteratorMeshPoly.isDone(); iteratorMeshPoly.next())
+			{
+				MPointArray temp;
+				iteratorMeshPoly.getPoints(temp, MSpace::kObject);
+				for (size_t i = 0; i < temp.length(); i++)
+				{
+					points.append(temp[i]);
+				}
+			}
+
+		}
+		else if (iteratorMeshEdge.count() != 0)
+		{
+			cerr << component.apiTypeStr() << endl;
+			for (; !iteratorMeshEdge.isDone(); iteratorMeshEdge.next())
+			{
+				points.append(iteratorMeshEdge.point(0, MSpace::kObject));
+				points.append(iteratorMeshEdge.point(1, MSpace::kObject));
+			}
+		}
+		else if (iteratorMeshVert.count() != 0)
+		{
+			cerr << component.apiTypeStr() << endl;
+			for (; !iteratorMeshVert.isDone(); iteratorMeshVert.next())
+			{
+				points.append(iteratorMeshVert.position());
+			}
+		}
+		else
+		{
+			cerr << "fatal error" << endl;
+			return;
+		}
+
+		//sPoint = points[0];
+
+		//if (point == sPoint)
 		{
 			VertSegmentMessage vertSegMessasge;
 			memcpy(vertSegMessasge.nodeName, meshName.asChar(), mesh.name().length());
@@ -295,30 +332,45 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 			vertSegMessasge.nodeName[vertSegMessasge.nameLength] = '\0';
 			vertSegMessasge.numVertices = iteratorMeshVert.count();
 			memcpy(meshDataToSend, &vertSegMessasge, sizeof(VertSegmentMessage));
-
 			unsigned int offset = sizeof(VertSegmentMessage);
 
-			for (; !iteratorMeshVert.isDone(); iteratorMeshVert.next())
+			for (size_t i = 0; i < points.length(); i++)
 			{
 				VertexMessage vertMessage;
 				Vertex tempVert;
 
-				MVector normal;
-				iteratorMeshVert.getNormal(normal, MSpace::kObject);
-
-				tempVert.logicalIndex = iteratorMeshVert.index();
-				tempVert.position.x = -iteratorMeshVert.position().x;
-				tempVert.position.y = iteratorMeshVert.position().y;
-				tempVert.position.z = iteratorMeshVert.position().z;
-				tempVert.normal.x = normal.x;	   //
-				tempVert.normal.y = normal.y;	   // Alla vertiser som delar denna point får nu dessa normaler. måste fixa så alla påverkade vertiser får de normaler de ska ha
-				tempVert.normal.z = normal.z;	   //
+				tempVert.position.x = points[i].x;
+				tempVert.position.y = points[i].y;
+				tempVert.position.z = points[i].z;
+				tempVert.normal.x = normal[plug.logicalIndex()].x;	   //
+				tempVert.normal.y = normal[plug.logicalIndex()].y;	   // Alla vertiser som delar denna point får nu dessa normaler. måste fixa så alla påverkade vertiser får de normaler de ska ha
+				tempVert.normal.z = normal[plug.logicalIndex()].z;	   //
+				tempVert.logicalIndex = triangleVerts[i];
 
 				vertMessage.indexId = iteratorMeshVert.index();
 				vertMessage.vert = tempVert;
 				memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
 				offset += sizeof(VertexMessage);
 			}
+
+			//for (size_t i = 0; i < points.length(); i++)
+			//{
+			//	VertexMessage vertMessage;
+			//	Vertex tempVert;
+
+			//	tempVert.position.x = points[i].x;
+			//	tempVert.position.y = points[i].y;
+			//	tempVert.position.z = points[i].z;
+			//	tempVert.normal.x = normal[plug.logicalIndex()].x;	   //
+			//	tempVert.normal.y = normal[plug.logicalIndex()].y;	   // Alla vertiser som delar denna point får nu dessa normaler. måste fixa så alla påverkade vertiser får de normaler de ska ha
+			//	tempVert.normal.z = normal[plug.logicalIndex()].z;	   //
+			//	tempVert.logicalIndex = iteratorMeshVert.index();
+
+			//	vertMessage.indexId = iteratorMeshVert.index();
+			//	vertMessage.vert = tempVert;
+			//	memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
+			//	offset += sizeof(VertexMessage);
+			//}
 
 			MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
 			MessageType::VERTSEGMENT, offset);
@@ -391,6 +443,7 @@ void CallbackHandler::TopologyChanged(MObject & node, void * clientData)
 	MFnMesh thisMesh(node);
 
 	std::cerr << "Topology has changed |" << thisMesh.name() << std::endl;
+	SendMesh(thisMesh);
 }
 
 void CallbackHandler::NodeCreated(MObject & node, void * clientData)

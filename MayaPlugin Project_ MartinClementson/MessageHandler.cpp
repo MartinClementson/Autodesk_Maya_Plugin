@@ -16,7 +16,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 	{
 	case MESH:		
 	{
-
 		char * newMessage = new char[sizeof(MainMessageHeader) + length];
 		mainHead.messageType = MESH;
 		mainHead.msgSize     = length;
@@ -28,7 +27,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 	}
 	case VERTSEGMENT:	//IMPLEMENT MEEEE
 	{
-
 		char * newMessage = new char[sizeof(MainMessageHeader) + length];
 		mainHead.messageType = VERTSEGMENT;
 		mainHead.msgSize = length;
@@ -42,7 +40,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 		break;			 
 	case CAMERA:	
 	{
-
 		mainHead.messageType = CAMERA;
 		mainHead.msgSize     = sizeof(CameraMessage);
 		char newMessage[sizeof(MainMessageHeader) + sizeof(CameraMessage)];
@@ -53,7 +50,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 	}
 	case TRANSFORM:	
 	{
-
 		mainHead.messageType = TRANSFORM;
 		mainHead.msgSize     = sizeof(TransformMessage);
 		char newMessage[sizeof(MainMessageHeader) + sizeof(TransformMessage)];
@@ -79,8 +75,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 
 		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(DeleteMessage));
 	}
-
-
 	default:			 
 		break;			 
 	}
