@@ -267,114 +267,119 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 		MFnTransform obj(mesh.parent(0));
 		MString meshName = obj.name().asChar();
 
-		MFloatVectorArray normal;
-		mesh.getNormals(normal, MSpace::kObject);
-
-		MIntArray numTriangles;
-		MIntArray triangleVerts;
-		mesh.getTriangles(numTriangles, triangleVerts);
-
-
-		MItMeshPolygon	iteratorMeshPoly(item, component);
-		MItMeshEdge		iteratorMeshEdge(item, component);
-		MItMeshVertex	iteratorMeshVert(item, component);
-
-		MPoint point, sPoint;
-		mesh.getPoint(plug.logicalIndex(), point);
-
 		MPointArray points;
+		MIntArray logicalIDs;
+		MFloatVectorArray normals, test;
+		MFloatArray U, V;
+		MIntArray normCount, normIDs, triCount, triIDs;
+		//const float* rawNormals = mesh.getRawNormals(0);
+		mesh.getUVs(V, U, 0);
+		mesh.getNormals(normals, MSpace::kObject);
+		mesh.getTriangleOffsets(triCount, triIDs);
+		mesh.getNormalIds(normCount, normIDs);
+		mesh.getVertexNormals(true, test, MSpace::kObject);
+		Float3 testfinalnormals[10];
 
-		if (iteratorMeshPoly.count() != 0)
+		MIntArray vertIDs;
+		for (size_t i = 0; i < mesh.numPolygons(); i++)
+		{
+			MIntArray temp;
+			mesh.getPolygonVertices(i, temp);
+			for (size_t j = 0; j < temp.length(); j++)
+			{
+				vertIDs.append(temp[j]);
+			}
+		}
+
+		if (component.apiType() == MFn::kMeshPolygonComponent)
 		{
 			cerr << component.apiTypeStr() << endl;
+			MItMeshPolygon	iteratorMeshPoly(item, component);
 			iteratorMeshPoly.getPoints(points, MSpace::kObject);
 			for (; !iteratorMeshPoly.isDone(); iteratorMeshPoly.next())
 			{
 				MPointArray temp;
 				iteratorMeshPoly.getPoints(temp, MSpace::kObject);
+				iteratorMeshPoly.getVertices(logicalIDs);
 				for (size_t i = 0; i < temp.length(); i++)
 				{
 					points.append(temp[i]);
+					logicalIDs.append(iteratorMeshPoly.vertexIndex(i));
 				}
 			}
-
 		}
-		else if (iteratorMeshEdge.count() != 0)
+		else if (component.apiType() == MFn::kMeshEdgeComponent)
 		{
 			cerr << component.apiTypeStr() << endl;
+			MItMeshEdge		iteratorMeshEdge(item, component);
 			for (; !iteratorMeshEdge.isDone(); iteratorMeshEdge.next())
 			{
 				points.append(iteratorMeshEdge.point(0, MSpace::kObject));
 				points.append(iteratorMeshEdge.point(1, MSpace::kObject));
+				logicalIDs.append(iteratorMeshEdge.index(0));
+				logicalIDs.append(iteratorMeshEdge.index(1));
+
 			}
 		}
-		else if (iteratorMeshVert.count() != 0)
+		else if (component.apiType() == MFn::kMeshVertComponent)
 		{
 			cerr << component.apiTypeStr() << endl;
+			MItMeshVertex	iteratorMeshVert(item, component);
 			for (; !iteratorMeshVert.isDone(); iteratorMeshVert.next())
 			{
 				points.append(iteratorMeshVert.position());
+				logicalIDs.append(iteratorMeshVert.index());
 			}
 		}
 		else
 		{
-			cerr << "fatal error" << endl;
+			cerr << "Fatal Error 0xfded " << endl;
 			return;
 		}
+		unsigned int offset = sizeof(VertSegmentMessage);
+		VertSegmentMessage vertSegMessasge;
+		memcpy(vertSegMessasge.nodeName, meshName.asChar(), mesh.name().length());
+		vertSegMessasge.nameLength = meshName.length();
+		vertSegMessasge.nodeName[vertSegMessasge.nameLength] = '\0';
+		vertSegMessasge.numVertices = points.length();
+		vertSegMessasge.numNormals = vertIDs.length();
+		memcpy(meshDataToSend, &vertSegMessasge, sizeof(VertSegmentMessage));
 
-		//sPoint = points[0];
-
-		//if (point == sPoint)
+		Float3* test2 = new Float3[vertIDs.length()];
+		offset += sizeof(Float3) * vertIDs.length();
+		for (size_t i = 0; i < vertIDs.length(); i++)
 		{
-			VertSegmentMessage vertSegMessasge;
-			memcpy(vertSegMessasge.nodeName, meshName.asChar(), mesh.name().length());
-			vertSegMessasge.nameLength = meshName.length();
-			vertSegMessasge.nodeName[vertSegMessasge.nameLength] = '\0';
-			vertSegMessasge.numVertices = iteratorMeshVert.count();
-			memcpy(meshDataToSend, &vertSegMessasge, sizeof(VertSegmentMessage));
-			unsigned int offset = sizeof(VertSegmentMessage);
-
-			for (size_t i = 0; i < points.length(); i++)
-			{
-				VertexMessage vertMessage;
-				Vertex tempVert;
-
-				tempVert.position.x = points[i].x;
-				tempVert.position.y = points[i].y;
-				tempVert.position.z = points[i].z;
-				tempVert.normal.x = normal[plug.logicalIndex()].x;	   //
-				tempVert.normal.y = normal[plug.logicalIndex()].y;	   // Alla vertiser som delar denna point får nu dessa normaler. måste fixa så alla påverkade vertiser får de normaler de ska ha
-				tempVert.normal.z = normal[plug.logicalIndex()].z;	   //
-				tempVert.logicalIndex = triangleVerts[i];
-
-				vertMessage.indexId = iteratorMeshVert.index();
-				vertMessage.vert = tempVert;
-				memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
-				offset += sizeof(VertexMessage);
-			}
-
-			//for (size_t i = 0; i < points.length(); i++)
-			//{
-			//	VertexMessage vertMessage;
-			//	Vertex tempVert;
-
-			//	tempVert.position.x = points[i].x;
-			//	tempVert.position.y = points[i].y;
-			//	tempVert.position.z = points[i].z;
-			//	tempVert.normal.x = normal[plug.logicalIndex()].x;	   //
-			//	tempVert.normal.y = normal[plug.logicalIndex()].y;	   // Alla vertiser som delar denna point får nu dessa normaler. måste fixa så alla påverkade vertiser får de normaler de ska ha
-			//	tempVert.normal.z = normal[plug.logicalIndex()].z;	   //
-			//	tempVert.logicalIndex = iteratorMeshVert.index();
-
-			//	vertMessage.indexId = iteratorMeshVert.index();
-			//	vertMessage.vert = tempVert;
-			//	memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
-			//	offset += sizeof(VertexMessage);
-			//}
-
-			MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
-			MessageType::VERTSEGMENT, offset);
+			test2[i].x = test[vertIDs[i]].x;
+			test2[i].y = test[vertIDs[i]].y;
+			test2[i].z = test[vertIDs[i]].z;
 		}
+		memcpy(meshDataToSend + offset, &test2, sizeof(Float3) * vertIDs.length());
+		delete[] test2;
+
+
+		for (size_t i = 0; i < points.length(); i++)
+		{
+			VertexMessage vertMessage;
+			Vertex tempVert;
+
+			tempVert.position.x = points[i].x;
+			tempVert.position.y = points[i].y;
+			tempVert.position.z = points[i].z;
+			tempVert.normal.x = normals[normIDs[triIDs[i]]].x;	   //
+			tempVert.normal.y = normals[normIDs[triIDs[i]]].y;	   // Alla vertiser som delar denna point får nu dessa normaler. måste fixa så alla påverkade vertiser får de normaler de ska ha
+			tempVert.normal.z = normals[normIDs[triIDs[i]]].z;	   //
+			tempVert.logicalIndex = logicalIDs[i];
+
+			vertMessage.indexId = logicalIDs[i];
+			vertMessage.vert = tempVert;
+
+
+			memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
+			offset += sizeof(VertexMessage);
+
+		}
+		MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
+		MessageType::VERTSEGMENT, offset);
 	}
 }
 

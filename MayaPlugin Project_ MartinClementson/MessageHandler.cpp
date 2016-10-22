@@ -25,7 +25,7 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 		delete newMessage;
 		break;			 
 	}
-	case VERTSEGMENT:	//IMPLEMENT MEEEE
+	case VERTSEGMENT:
 	{
 		char * newMessage = new char[sizeof(MainMessageHeader) + length];
 		mainHead.messageType = VERTSEGMENT;
