@@ -1,5 +1,13 @@
 
 #include "CallbackHandler.h"
+
+
+MCallbackIdArray CallbackHandler::callBackIds;
+
+char* CallbackHandler::meshDataToSend;
+
+std::unordered_map<std::string, MObject> CallbackHandler::knownShaders;
+
 inline void UpdateChildren(MFnTransform& transformNode)
 {
 	// recursive
@@ -15,13 +23,8 @@ inline void UpdateChildren(MFnTransform& transformNode)
 			MFnTransform childN(transformNode.child(i));
 			UpdateChildren(childN);
 		}
-
 	}
-
-
-
 }
-
 inline MObject findShader(MObject& setNode)
 {
 	MFnDependencyNode fnNode(setNode);
@@ -40,16 +43,68 @@ inline MObject findShader(MObject& setNode)
 	}
 }
 
+inline bool GetMeshShaderName(MFnMesh& mesh, MString& nameContainer)
+{
+
+	MObjectArray sets;
+	MObjectArray comps;
+	unsigned int instanceNum = mesh.dagPath().instanceNumber();
+	if (!mesh.getConnectedSetsAndMembers(instanceNum, sets, comps, true))
+		return false;
+	/*
+	getConnectedSetsAndMembers()
+	Returns all the sets connected to the specified instance of this DAG object.
+	For each set in the "sets" array there is a corresponding entry in the "comps" array which are all the components in that set. If the entire object is in a set,
+	then the corresponding entry in the comps array will have no elements in it.
+	*/
+
+	if (sets.length())
+	{
+		MObject set = sets[0];
+		MObject comp = comps[0];
+
+
+		MStatus status;
+		MObject shaderNode = findShader(set);
+		if (shaderNode != MObject::kNullObj)
+		{
+
+			
+			nameContainer = MFnDependencyNode(shaderNode).name();
+			if (nameContainer.asChar() > 0)
+				return true;
+			
+		}
+	}
+	return false;
+
+}
+
+
+
 bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 {
 	MeshMessage meshMessage;
-	if (materialName != nullptr);
-		memcpy(meshMessage.materialName, materialName, 256);
-
-
 	string name = mesh.name().asChar();
 	if (name == "")
 		return false;
+
+	if (materialName != nullptr)
+		memcpy(meshMessage.materialName, materialName, 256);
+
+	MString shaderName;
+	if (GetMeshShaderName(mesh, shaderName))
+	{
+		if (knownShaders.find(shaderName.asChar()) != knownShaders.end())
+		{
+			std::cerr << " This shader is already known! : " << shaderName << std::endl;
+			memcpy(meshMessage.materialName, shaderName.asChar(), shaderName.length());
+		}
+	}
+	else
+		return false;
+
+
 
 	string command = "setAttr " + name + ".quadSplit 1";
 
@@ -182,7 +237,7 @@ bool CallbackHandler::SendMaterial(MaterialMessage* material, TextureFile* textu
 	}
 	else
 	{
-		bool result = MessageHandler::GetInstance()->SendNewMessage((char*)&material, MessageType::MATERIAL,sizeof(MaterialMessage));
+		bool result = MessageHandler::GetInstance()->SendNewMessage((char*)material, MessageType::MATERIAL,sizeof(MaterialMessage));
 		return result;
 	}
 
@@ -221,7 +276,17 @@ bool CallbackHandler::GetMaterialFromMesh(MFnMesh & mesh, char* matName)
 			
 			float rgb[3];
 			MString mMatName = MFnDependencyNode(shaderNode).name();
-
+		
+			if (knownShaders.find(mMatName.asChar()) != knownShaders.end())
+			{
+				std::cerr << " This shader is already known! : " << mMatName << std::endl;
+			}
+			else
+			{
+				std::cerr << "New Shader discovered in sendMesh! : " << mMatName << std::endl;
+				knownShaders[mMatName.asChar()] = shaderNode;
+			}
+			
 			if(matName != nullptr) // if the caller of the function wants the name returned
 				memcpy(matName, mMatName.asChar(), mMatName.length());
 
@@ -286,6 +351,76 @@ bool CallbackHandler::GetMaterialFromMesh(MFnMesh & mesh, char* matName)
  return true;
 }
 
+bool CallbackHandler::SendMaterial(MObject materialNode)
+{
+	MaterialMessage material;
+	TextureFile diffuse;
+	
+	if (materialNode != MObject::kNullObj)
+	{
+		MStatus status;
+		float rgb[3];
+		MString mMatName = MFnDependencyNode(materialNode).name();
+
+		if (knownShaders.find(mMatName.asChar()) != knownShaders.end())
+		{
+			std::cerr << " This shader is already known! : " << mMatName << std::endl;
+		}
+		else
+		{
+			std::cerr << "New Shader discovered in sendMaterial! : " << mMatName << std::endl;
+			knownShaders[mMatName.asChar()] = materialNode;
+		}
+
+		memcpy(material.matName, mMatName.asChar(), mMatName.length());
+		std::cerr << "Shader name : " << material.matName << std::endl;
+		MPlug colorPlug = MFnDependencyNode(materialNode).findPlug("color", &status);
+		if (status != MS::kFailure)
+		{
+			MItDependencyGraph It(colorPlug, MFn::kFileTexture, MItDependencyGraph::kUpstream);
+			if (!It.isDone())
+			{
+				// Get the filename
+				MString filename;
+				MFnDependencyNode(It.thisNode()).findPlug("fileTextureName").getValue(filename);
+				if (filename.length())
+				{
+					if (filename.length() > 256)
+					{
+						std::cerr << "Texture path :" << filename.asChar() << "\n"
+							<< " is too long! Consider changing the name" << std::endl;
+						return false;
+					}
+					//A texture exists
+					memcpy(diffuse.texturePath, filename.asChar(), filename.length());
+					std::cerr << "Texture map is : " << diffuse.texturePath << std::endl;
+					diffuse.type = TextureTypes::DIFFUSE;
+					material.numTextures += 1;
+				}
+
+
+			}
+			else
+			{
+				//No texture exists, get the rgb values
+				MObject data;
+				colorPlug.getValue(data);
+				MFnNumericData val(data);
+				val.getData(rgb[0], rgb[1], rgb[2]);
+				material.diffuse = Float3(rgb[0], rgb[1], rgb[2]);
+
+			}
+
+		}
+		else
+			return false;
+
+		return SendMaterial(&material, &diffuse);
+	}
+	else
+		return false;
+}
+
 CallbackHandler::CallbackHandler()
 {
 }
@@ -296,6 +431,7 @@ CallbackHandler::~CallbackHandler()
 {
 	delete[] CallbackHandler::meshDataToSend;
 	MMessage::removeCallbacks(callBackIds);
+	knownShaders.clear();
 
 }
 
@@ -365,7 +501,22 @@ bool CallbackHandler::Init()
 
 	}
 
+	MItDependencyNodes shaderIt(MFn::kLambert, &result);
+	
+	for (; !shaderIt.isDone(); shaderIt.next())
+	{
+		MFnDependencyNode mat(shaderIt.item());
+		const char* name=  mat.name().asChar();
+		std::cerr << "New Material Found : " << name << std::endl;
+		knownShaders[name] = shaderIt.item();
+		SendMaterial(shaderIt.item());
+		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(shaderIt.item(), MaterialChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 
+		if (result == MS::kSuccess)
+			callBackIds.append(polyId);
+	}
+
+	
 	MItDag meshIt(MItDag::kBreadthFirst, MFn::kMesh, &result);
 	for (; !meshIt.isDone(); meshIt.next())
 	{
@@ -377,7 +528,7 @@ bool CallbackHandler::Init()
 		
 		char materialName[256];
 		memset(materialName, '\0', 256);
-		GetMaterialFromMesh(mesh, materialName);
+		//GetMaterialFromMesh(mesh, materialName);
 	//string name = mesh.name().asChar();
 	//string command = "setAttr " + name +".quadSplit 1";
 	//MGlobal::executeCommandStringResult(MString(command.c_str()));
@@ -412,6 +563,27 @@ bool CallbackHandler::Init()
 
 void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
 {
+	
+	MFnDependencyNode depNode(plug.node());
+	MPlug matPlug = depNode.findPlug("iog").elementByLogicalIndex(0);
+	
+	if (matPlug == plug)
+	{
+		if (plug.node().hasFn(MFn::kMesh))
+		{ 
+			std::cerr << "Material Changed: " << depNode.name() << std::endl;
+			MFnMesh mesh(plug.node());
+
+			if (!CallbackHandler::SendMesh(mesh, nullptr))
+			{
+				queueMutex.lock();
+				meshToSendQueue.push(plug.node());
+				queueMutex.unlock();
+			}
+		}
+	
+		return;
+	}
 
 	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && plug.isArray() && !plug.isElement()) //if a specific vert has changed
 	{
@@ -454,7 +626,6 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 
 	MStatus result; 
 
-	
 
 	MFnMatrixData parentMatrix = depNode.findPlug("pm").elementByLogicalIndex(0).asMObject();
 	MMatrix matrix = obj.transformationMatrix();
@@ -507,10 +678,10 @@ void CallbackHandler::TopologyChanged(MObject & node, void * clientData)
 
 void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 {
-
+	MStatus result;
 	if (node.hasFn(MFn::kTransform))
 	{
-		MStatus result;
+		
 		MCallbackId cbId = MNodeMessage::addNodeAboutToDeleteCallback(node, NodeDestroyed, NULL, &result);
 		if (result == MS::kSuccess)
 		{
@@ -519,18 +690,27 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 			std::cerr << "Deletion callback added!  " << std::endl;
 		}
 	}
+	if (node.hasFn(MFn::kLambert))
+	{
+		SendMaterial(node);
+		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, MaterialChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
+		std::cerr << " A new Material has been created!" << std::endl;
+		if (result == MS::kSuccess)
+			callBackIds.append(polyId);
+
+	}
 
 	if (node.hasFn(MFn::kMesh))
 	{
 		MFnMesh mesh(node);
 		
 		MFnDagNode nodeHandle(node);
-		MStatus result;
+		
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, VertChanged, NULL, &result);
 		
 		std::cerr << nodeHandle.fullPathName() << std::endl;
 	
-			if (!CallbackHandler::SendMesh(mesh))
+			if (!CallbackHandler::SendMesh(mesh,nullptr))
 			{
 				queueMutex.lock();
 				meshToSendQueue.push(node);
@@ -567,16 +747,36 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 
 	//This is called for every frame, Create an if here that checks if the cam has been updated
 	//until then, have a good day
-
-
+	static double lastKnownView[4][4]{0};
+	//now i've done that! and my days were good. thank you
+	
 		MString focusedPanel = MGlobal::executeCommandStringResult("getPanel -wf");
-		std::cerr << "Panel callback : " << str.asChar()          << std::endl;
-		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
+		//std::cerr << "Panel callback : " << str.asChar()          << std::endl;
 	if (str == focusedPanel)
 	{
+
+		M3dView viewport;//= M3dView::active3dView();
+		M3dView::getM3dViewFromModelPanel(focusedPanel, viewport);
+		//View Matrix
+		MMatrix viewMatrixDouble;
+		viewport.modelViewMatrix(viewMatrixDouble);		  // get the matrix as double
+		if (memcmp(lastKnownView, viewMatrixDouble.matrix, sizeof(double) * 16) == 0)
+		{
+			//std::cerr << "The camera has not been updated, dont send" << std::endl;
+			return;
+		}
+		
+		else
+		{
+			memcpy(lastKnownView, viewMatrixDouble.matrix, sizeof(double) * 16);
+	
+		}
+
+
+		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
 		
 		CameraMessage header;
-		M3dView viewport;//= M3dView::active3dView();
+		
 		M3dView::getM3dViewFromModelPanel(focusedPanel, viewport);
 
 		////// All this just to get the proper name/////////////
@@ -592,12 +792,10 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		MFnCamera mCam(camera);
 		
 
-		std::cerr << "Camera is   :" << tempCamTransform.name().asChar() << std::endl;
+		//std::cerr << "Camera is   :" << tempCamTransform.name().asChar() << std::endl;
 		viewport.updateViewingParameters();
 
-		//View Matrix
-		MMatrix viewMatrixDouble;
-		viewport.modelViewMatrix(viewMatrixDouble);		  // get the matrix as double
+	
 		MFloatMatrix viewMatrix(viewMatrixDouble.matrix); // convert it into float
 		memcpy(header.viewMatrix, viewMatrix.matrix, sizeof(float) * 16);
 																		 
@@ -614,10 +812,10 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 
 	
 
-		std::cerr << viewMatrix.matrix[0][0] << " " << viewMatrix.matrix[0][1] << " " << viewMatrix.matrix[0][2] << " " << viewMatrix .matrix[0][3] << std::endl;
-		std::cerr << viewMatrix.matrix[1][0] << " " << viewMatrix.matrix[1][1] << " " << viewMatrix.matrix[1][2] << " " << viewMatrix .matrix[1][3] << std::endl;
-		std::cerr << viewMatrix.matrix[2][0] << " " << viewMatrix.matrix[2][1] << " " << viewMatrix.matrix[2][2] << " " << viewMatrix .matrix[2][3] << std::endl;
-		std::cerr << viewMatrix.matrix[3][0] << " " << viewMatrix.matrix[3][1] << " " << viewMatrix.matrix[3][2] << " " << viewMatrix .matrix[3][3] << std::endl;
+		//std::cerr << viewMatrix.matrix[0][0] << " " << viewMatrix.matrix[0][1] << " " << viewMatrix.matrix[0][2] << " " << viewMatrix .matrix[0][3] << std::endl;
+		//std::cerr << viewMatrix.matrix[1][0] << " " << viewMatrix.matrix[1][1] << " " << viewMatrix.matrix[1][2] << " " << viewMatrix .matrix[1][3] << std::endl;
+		//std::cerr << viewMatrix.matrix[2][0] << " " << viewMatrix.matrix[2][1] << " " << viewMatrix.matrix[2][2] << " " << viewMatrix .matrix[2][3] << std::endl;
+		//std::cerr << viewMatrix.matrix[3][0] << " " << viewMatrix.matrix[3][1] << " " << viewMatrix.matrix[3][2] << " " << viewMatrix .matrix[3][3] << std::endl;
 
 		
 
@@ -638,7 +836,7 @@ void CallbackHandler::TimeCallback(float elapsedTime, float lastTime, void * cli
 	if (!meshToSendQueue.empty())
 	{
 		std::cerr << "Time Callback: trying to send mesh" << std::endl;
-		while (CallbackHandler::SendMesh(MFnMesh(meshToSendQueue.front())))
+		while (CallbackHandler::SendMesh(MFnMesh(meshToSendQueue.front(),nullptr)))
 		{
 			meshToSendQueue.pop();
 			if (meshToSendQueue.empty())
@@ -667,4 +865,17 @@ void CallbackHandler::NodeDestroyed(MObject &node, MDGModifier &modifier, void *
 		newMessage.nameLength = object.name().length();
 		MessageHandler::GetInstance()->SendNewMessage((char*) &newMessage, MessageType::DELETION, sizeof(DeleteMessage));
 	}
+}
+
+void CallbackHandler::MaterialChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug& otherPlug, void *)
+{
+
+	
+
+	if (plug.node().hasFn(MFn::kLambert))
+	{
+		SendMaterial(plug.node());
+		std::cerr << "MATERIALS HAVE CHANGED WOHOOOO" << std::endl;
+	}
+
 }
