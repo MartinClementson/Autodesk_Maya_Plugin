@@ -109,7 +109,8 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh)
 		tempVert.uv.x = U[vertList[TriIndices[i]]];
 		tempVert.uv.y = V[vertList[TriIndices[i]]];
 		tempVert.logicalIndex = triangleVerts[i];
-
+		tempVert.normalIndex =TriIndices[i];
+		std::cerr << "ID: " << normalList[TriIndices[i]] << " Normal: " << tempVert.normal.x << " | " << tempVert.normal.y << " | " << tempVert.normal.z << endl;
 		indices[i] = i;
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
@@ -263,33 +264,21 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 		iterator.getDagPath(item);
 
 		node = plug.node();
+		if (!node.hasFn(MFn::kMesh))
+			return;
 		MFnMesh mesh = node;
 		MFnTransform obj(mesh.parent(0));
 		MString meshName = obj.name().asChar();
 
 		MPointArray points;
 		MIntArray logicalIDs;
-		MFloatVectorArray normals, test;
+		MFloatVectorArray normals, normals2;
 		MFloatArray U, V;
-		MIntArray normCount, normIDs, triCount, triIDs;
-		//const float* rawNormals = mesh.getRawNormals(0);
+		MIntArray normCount, normIDs;
+		const float* rawNormals = mesh.getRawNormals(0);
 		mesh.getUVs(V, U, 0);
-		mesh.getNormals(normals, MSpace::kObject);
-		mesh.getTriangleOffsets(triCount, triIDs);
+		mesh.getNormals(normals2, MSpace::kObject);
 		mesh.getNormalIds(normCount, normIDs);
-		mesh.getVertexNormals(true, test, MSpace::kObject);
-		Float3 testfinalnormals[10];
-
-		MIntArray vertIDs;
-		for (size_t i = 0; i < mesh.numPolygons(); i++)
-		{
-			MIntArray temp;
-			mesh.getPolygonVertices(i, temp);
-			for (size_t j = 0; j < temp.length(); j++)
-			{
-				vertIDs.append(temp[j]);
-			}
-		}
 
 		if (component.apiType() == MFn::kMeshPolygonComponent)
 		{
@@ -336,26 +325,31 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 			cerr << "Fatal Error 0xfded " << endl;
 			return;
 		}
+
 		unsigned int offset = sizeof(VertSegmentMessage);
 		VertSegmentMessage vertSegMessasge;
 		memcpy(vertSegMessasge.nodeName, meshName.asChar(), mesh.name().length());
 		vertSegMessasge.nameLength = meshName.length();
 		vertSegMessasge.nodeName[vertSegMessasge.nameLength] = '\0';
-		vertSegMessasge.numVertices = points.length();
-		vertSegMessasge.numNormals = vertIDs.length();
+		vertSegMessasge.numVertices = points.length(); //dubbelkolla dupes
+		vertSegMessasge.numNormals = normIDs.length();
 		memcpy(meshDataToSend, &vertSegMessasge, sizeof(VertSegmentMessage));
 
-		Float3* test2 = new Float3[vertIDs.length()];
-		offset += sizeof(Float3) * vertIDs.length();
-		for (size_t i = 0; i < vertIDs.length(); i++)
+		Float3* normalsToSend = new Float3[normIDs.length()];
+		for (size_t i = 0; i < normIDs.length(); i++)
 		{
-			test2[i].x = test[vertIDs[i]].x;
-			test2[i].y = test[vertIDs[i]].y;
-			test2[i].z = test[vertIDs[i]].z;
+				normalsToSend[i].x = rawNormals[normIDs[i] * 3];
+				normalsToSend[i].y = rawNormals[normIDs[i] * 3 + 1];
+				normalsToSend[i].z = rawNormals[normIDs[i] * 3 + 2];
 		}
-		memcpy(meshDataToSend + offset, &test2, sizeof(Float3) * vertIDs.length());
-		delete[] test2;
-
+		memcpy(meshDataToSend + offset, normalsToSend, sizeof(Float3) * normIDs.length());
+		offset += sizeof(Float3) * normIDs.length();
+		delete[] normalsToSend;
+		int* IDptr = new int[normIDs.length()];
+		normIDs.get(IDptr);
+		memcpy(meshDataToSend + offset, IDptr, sizeof(int) * normIDs.length());
+		delete[] IDptr;
+		offset += sizeof(int) * normIDs.length();
 
 		for (size_t i = 0; i < points.length(); i++)
 		{
@@ -365,14 +359,9 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 			tempVert.position.x = points[i].x;
 			tempVert.position.y = points[i].y;
 			tempVert.position.z = points[i].z;
-			tempVert.normal.x = normals[normIDs[triIDs[i]]].x;	   //
-			tempVert.normal.y = normals[normIDs[triIDs[i]]].y;	   // Alla vertiser som delar denna point får nu dessa normaler. måste fixa så alla påverkade vertiser får de normaler de ska ha
-			tempVert.normal.z = normals[normIDs[triIDs[i]]].z;	   //
 			tempVert.logicalIndex = logicalIDs[i];
-
 			vertMessage.indexId = logicalIDs[i];
 			vertMessage.vert = tempVert;
-
 
 			memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
 			offset += sizeof(VertexMessage);
