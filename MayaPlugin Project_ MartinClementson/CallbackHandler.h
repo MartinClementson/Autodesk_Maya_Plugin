@@ -4,6 +4,7 @@
 #include <queue>
 #include <maya\MMutexLock.h>
 #include <unordered_map>
+#include <DirectXMath.h>
 ////#include "circular.h"
 ////
 static std::queue<MObject> meshToSendQueue;

@@ -866,7 +866,27 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		
 		MFnCamera mCam(camera);
 		float fov = (float)mCam.verticalFieldOfView();
-		mCam.isOrtho();
+		DirectX::XMMATRIX d3dProj;
+		if (mCam.isOrtho())
+		{
+			float x = (float)mCam.orthoWidth();
+			float y = (float)viewport.portHeight();
+			d3dProj = DirectX::XMMatrixOrthographicLH(
+				(float)viewport.portWidth(),
+				(float)viewport.portHeight(),
+				mCam.nearClippingPlane(),
+				mCam.farClippingPlane());
+
+		}
+		else
+		{
+			d3dProj = DirectX::XMMatrixPerspectiveFovLH((float)mCam.verticalFieldOfView()
+			,(float)mCam.aspectRatio(),
+			mCam.nearClippingPlane(),
+			mCam.farClippingPlane());
+
+		}
+
 
 
 	
@@ -881,8 +901,8 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 	//MFloatMatrix projMatrix(viewMatrixDouble.matrix); // convert it into float
 
 		MFloatMatrix projMatrix = mCam.projectionMatrix();
-		memcpy(header.projMatrix, projMatrix.matrix, sizeof(float) * 16);
-
+		//memcpy(header.projMatrix, projMatrix.matrix, sizeof(float) * 16);
+		memcpy(header.projMatrix, d3dProj.r->m128_f32, sizeof(float) * 16);
 
 	
 
