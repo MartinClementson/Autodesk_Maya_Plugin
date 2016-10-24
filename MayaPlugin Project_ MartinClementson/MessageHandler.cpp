@@ -39,6 +39,10 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 		memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));						 //merge the message and the header
 		memcpy(newMessage + sizeof(MainMessageHeader), msg, sizeof(CameraMessage));	     //merge the message and the header
 		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(CameraMessage));
+		Float3* pos = &((CameraMessage*)msg)->camPos;
+		std::cerr << "Campos being sent : " << pos->x << "," << pos->y << "," << pos->z << std::endl;
+		
+		
 		break;			 
 	}
 	case TRANSFORM:	
