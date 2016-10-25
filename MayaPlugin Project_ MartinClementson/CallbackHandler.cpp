@@ -818,6 +818,7 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 	//This is called for every frame, Create an if here that checks if the cam has been updated
 	//until then, have a good day
 	static double lastKnownView[4][4]{0};
+	static double lastKnownProj[4][4]{ 0 };
 	//now i've done that! and my days were good. thank you
 	
 	MString focusedPanel = MGlobal::executeCommandStringResult("getPanel -wf");
@@ -829,17 +830,24 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		//View Matrix
 		MMatrix viewMatrixDouble;
 		viewport.modelViewMatrix(viewMatrixDouble);		  // get the matrix as double
+		MMatrix projMatrixDouble;
+		viewport.projectionMatrix(projMatrixDouble);
 		if (memcmp(lastKnownView, viewMatrixDouble.matrix, sizeof(double) * 16) == 0)
 		{
-			//std::cerr << "The camera has not been updated, dont send" << std::endl;
-			return;
+
+			//now check if the projection has made any changes,
+			if (memcmp(lastKnownProj, projMatrixDouble.matrix, sizeof(double) * 16) == 0)
+			{
+				//std::cerr << "The camera has not been updated, dont send" << std::endl;
+				return;
+
+			}
+			else
+				memcpy(lastKnownProj, projMatrixDouble.matrix, sizeof(double) * 16);
+
 		}
-		
 		else
-		{
 			memcpy(lastKnownView, viewMatrixDouble.matrix, sizeof(double) * 16);
-	
-		}
 
 
 		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
@@ -871,12 +879,14 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		{
 			float x = (float)mCam.orthoWidth();
 			float y = (float)viewport.portHeight();
+			float aspect = 800.0f / 600.0f;			//this is bad, but it works. don't copy this. it's an ugly fix
+			float w = aspect * mCam.orthoWidth();
+		
 			d3dProj = DirectX::XMMatrixOrthographicLH(
-				(float)viewport.portWidth(),
-				(float)viewport.portHeight(),
+				(float)w,
+				(float)w,
 				mCam.nearClippingPlane(),
 				mCam.farClippingPlane());
-
 		}
 		else
 		{
@@ -887,31 +897,12 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 
 		}
 
-
-
 	
 		MFloatMatrix viewMatrix(viewMatrixDouble.matrix); // convert it into float
 		memcpy(header.viewMatrix, viewMatrix.matrix, sizeof(float) * 16);
 																		 
-		//Proj Matrix												 
-	//MMatrix projMatrixDouble;					
-	//viewport.projectionMatrix(projMatrixDouble);
-	//projMatrixDouble = projMatrixDouble.homogenize();
-	//
-	//MFloatMatrix projMatrix(viewMatrixDouble.matrix); // convert it into float
-
-		MFloatMatrix projMatrix = mCam.projectionMatrix();
-		//memcpy(header.projMatrix, projMatrix.matrix, sizeof(float) * 16);
 		memcpy(header.projMatrix, d3dProj.r->m128_f32, sizeof(float) * 16);
 
-	
-
-		//std::cerr << viewMatrix.matrix[0][0] << " " << viewMatrix.matrix[0][1] << " " << viewMatrix.matrix[0][2] << " " << viewMatrix .matrix[0][3] << std::endl;
-		//std::cerr << viewMatrix.matrix[1][0] << " " << viewMatrix.matrix[1][1] << " " << viewMatrix.matrix[1][2] << " " << viewMatrix .matrix[1][3] << std::endl;
-		//std::cerr << viewMatrix.matrix[2][0] << " " << viewMatrix.matrix[2][1] << " " << viewMatrix.matrix[2][2] << " " << viewMatrix .matrix[2][3] << std::endl;
-		//std::cerr << viewMatrix.matrix[3][0] << " " << viewMatrix.matrix[3][1] << " " << viewMatrix.matrix[3][2] << " " << viewMatrix .matrix[3][3] << std::endl;
-
-		
 
 		char newHeader[sizeof(CameraMessage)];
 		memset(newHeader, '\0', sizeof(CameraMessage));
