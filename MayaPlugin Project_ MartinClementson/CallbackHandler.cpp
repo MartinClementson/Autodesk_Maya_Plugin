@@ -245,113 +245,8 @@ bool CallbackHandler::SendMaterial(MaterialMessage* material, TextureFile* textu
 	
 }
 
-bool CallbackHandler::GetMaterialFromMesh(MFnMesh & mesh, char* matName)
- {
 
- 	MObjectArray sets;
- 	MObjectArray comps;
- 	unsigned int instanceNum = mesh.dagPath().instanceNumber();
- 	if (!mesh.getConnectedSetsAndMembers(instanceNum, sets, comps, true))
- 		return false;
- 	/*
- 	getConnectedSetsAndMembers()
- 	Returns all the sets connected to the specified instance of this DAG object.
- 	For each set in the "sets" array there is a corresponding entry in the "comps" array which are all the components in that set. If the entire object is in a set, 
- 	then the corresponding entry in the comps array will have no elements in it.
- 	*/
- 	
- 	if (sets.length())
- 	{
- 		MObject set = sets[0];
- 		MObject comp = comps[0];
- 
- 
- 		MStatus status;
- 
- 		MaterialMessage material;
-		TextureFile diffuse;
- 		MObject shaderNode = findShader(set);
-		if (shaderNode != MObject::kNullObj)
-		{
-			
-			float rgb[3];
-			MString mMatName = MFnDependencyNode(shaderNode).name();
-		
-			if (knownShaders.find(mMatName.asChar()) != knownShaders.end())
-			{
-				std::cerr << " This shader is already known! : " << mMatName << std::endl;
-			}
-			else
-			{
-				std::cerr << "New Shader discovered in sendMesh! : " << mMatName << std::endl;
-				knownShaders[mMatName.asChar()] = shaderNode;
-			}
-			
-			if(matName != nullptr) // if the caller of the function wants the name returned
-				memcpy(matName, mMatName.asChar(), mMatName.length());
-
-
-			memcpy(material.matName, mMatName.asChar(), mMatName.length());
-			std::cerr << "Shader name : " << material.matName << std::endl;
-			MPlug colorPlug = MFnDependencyNode(shaderNode).findPlug("color", &status);
-			if (status != MS::kFailure)
-			{
-				MItDependencyGraph It(colorPlug, MFn::kFileTexture, MItDependencyGraph::kUpstream);
-				if (!It.isDone())
-				{
-					// Get the filename
-					MString filename;
-					MFnDependencyNode(It.thisNode()).findPlug("fileTextureName").getValue(filename);
-					if (filename.length())
-					{
-						if (filename.length() > 256)
-						{
-							std::cerr << "Texture path :" << filename.asChar() << "\n"
-								<< " is too long! Consider changing the name" << std::endl;
-							return false;
-						}
-						//A texture exists
-						memcpy(diffuse.texturePath, filename.asChar(), filename.length());
-						std::cerr << "Texture map is : " << diffuse.texturePath << std::endl;
-						diffuse.type = TextureTypes::DIFFUSE;
-						material.numTextures +=1;
-					}
-					
-
-				}
-				else
-				{
-					//No texture exists, get the rgb values
-					MObject data;
-					colorPlug.getValue(data);
-					MFnNumericData val(data);
-					val.getData(rgb[0], rgb[1], rgb[2]);
-					material.diffuse = Float3(rgb[0], rgb[1], rgb[2]);
-
-				}
-
-			}
-			else
-				return false;
-
-			return SendMaterial(&material,&diffuse);
-		}
-		else
-			return false;
- 
- 
- 	}
- 
- // Get the filename
- //MString filename;
- //MFnDependencyNode(material).findPlug("fileTextureName").getValue(filename);
- //if (filename.length())
- 
-	
- return true;
-}
-
-bool CallbackHandler::SendMaterial(MObject materialNode)
+bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 {
 	MaterialMessage material;
 	TextureFile diffuse;
@@ -550,7 +445,7 @@ bool CallbackHandler::Init()
 		const char* name=  mat.name().asChar();
 		std::cerr << "New Material Found : " << name << std::endl;
 		knownShaders[name] = shaderIt.item();
-		SendMaterial(shaderIt.item());
+		ExtractAndSendMaterial(shaderIt.item());
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(shaderIt.item(), MaterialChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 
 		if (result == MS::kSuccess)
@@ -583,10 +478,7 @@ bool CallbackHandler::Init()
 		
 		char materialName[256];
 		memset(materialName, '\0', 256);
-		//GetMaterialFromMesh(mesh, materialName);
-	//string name = mesh.name().asChar();
-	//string command = "setAttr " + name +".quadSplit 1";
-	//MGlobal::executeCommandStringResult(MString(command.c_str()));
+	
 
 		if (result == MS::kSuccess)
 		{
@@ -674,6 +566,7 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::MatrixModifiedFlags & modified, void * clientData)
 {
 
+	MStatus result; 
 	MFnDependencyNode depNode(transformNode);
 	MFnTransform obj(transformNode);
 	TransformMessage header;
@@ -681,11 +574,6 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	header.nameLength = obj.name().length();
 	memcpy(header.nodeName, obj.name().asChar(), header.nameLength);
 	header.nodeName[header.nameLength] = '\0';
-
-
-
-
-	MStatus result; 
 
 
 	MFnMatrixData parentMatrix = depNode.findPlug("pm").elementByLogicalIndex(0).asMObject();
@@ -707,15 +595,6 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	
 	std::cerr << "A TransformNode has changed!! |" << obj.name() << "   | " << modified << std::endl;
 	
-
-	//for (size_t row = 0; row < 4; row++)
-	//{
-	//	for (size_t column = 0; column < 4; column++)
-	//	{
-	//		header.matrix[(4 * row) + column] = (float)matrix.matrix[row][column]; 
-	//	}
-	//}
-
 	MFloatMatrix floatMatrix(matrix.matrix); // convert it into float
 	memcpy(header.matrix, floatMatrix.matrix, sizeof(float) * 16);
 
@@ -750,7 +629,7 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 	}
 	if (node.hasFn(MFn::kLambert))
 	{
-		SendMaterial(node);
+		ExtractAndSendMaterial(node);
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, MaterialChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 		std::cerr << " A new Material has been created!" << std::endl;
 		if (result == MS::kSuccess)
@@ -969,8 +848,8 @@ void CallbackHandler::MaterialChanged(MNodeMessage::AttributeMessage msg, MPlug 
 
 	if (plug.node().hasFn(MFn::kLambert))
 	{
-		SendMaterial(plug.node());
-		std::cerr << "MATERIALS HAVE CHANGED WOHOOOO" << std::endl;
+		ExtractAndSendMaterial(plug.node());
+		//std::cerr << "MATERIALS HAVE CHANGED WOHOOOO" << std::endl;
 	}
 
 }
@@ -998,7 +877,7 @@ void CallbackHandler::TextureChanged(MNodeMessage::AttributeMessage msg, MPlug &
 				
 				MFnDependencyNode connectedNode(plugArray[0].node());
 				std::cerr <<  connectedNode.name().asChar() << std::endl;
-				SendMaterial(plugArray[0].node());
+				ExtractAndSendMaterial(plugArray[0].node());
 
 			}
 			else

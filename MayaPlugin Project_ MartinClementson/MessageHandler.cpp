@@ -16,7 +16,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 	{
 	case MESH:		
 	{
-
 		char * newMessage = new char[sizeof(MainMessageHeader) + length];
 		mainHead.messageType = MESH;
 		mainHead.msgSize     = length;
@@ -60,7 +59,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 	}
 	case MATERIAL:		
 	{
-		
 		mainHead.messageType = MATERIAL;
 		mainHead.msgSize	 = sizeof(MaterialMessage);
 		MaterialMessage* matMsg = (MaterialMessage*)msg;
@@ -73,10 +71,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 			
 			result = engineCommunicator.PutMessageIntoBuffer(newMessage, msgSize);
 			delete newMessage;
-
-			TextureFile* texture = (TextureFile*)(msg + sizeof(MaterialMessage));
-			std::cerr << "The texture that was sent had the path : " << texture->texturePath << std::endl;
-
 		}
 		else
 		{
@@ -89,7 +83,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 		}
 		break;	
 	}
-
 	case DELETION:
 	{
 		mainHead.messageType = DELETION;
@@ -102,8 +95,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 
 		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(DeleteMessage));
 	}
-
-
 	default:			 
 		break;			 
 	}

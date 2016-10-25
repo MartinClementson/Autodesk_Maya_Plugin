@@ -30,8 +30,7 @@ public:
 	static CallbackHandler* GetInstance() { static CallbackHandler instance; return &instance; }
 	static bool SendMesh(MFnMesh& mesh, char* materialName = nullptr);
 	static bool SendMaterial(MaterialMessage* material, TextureFile* textures);
-	static bool GetMaterialFromMesh(MFnMesh& mesh, char* matName = nullptr);
-	static bool SendMaterial(MObject materialNode);
+	static bool ExtractAndSendMaterial(MObject materialNode);
 #pragma region Callback functions
 	static void VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug& otherPlug, void *);
 	static void WorldMatrixChanged(MObject & transformNode, MDagMessage::MatrixModifiedFlags & modified, void * clientData);
