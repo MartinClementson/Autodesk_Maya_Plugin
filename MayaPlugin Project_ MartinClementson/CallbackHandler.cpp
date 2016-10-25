@@ -229,7 +229,7 @@ bool CallbackHandler::SendMaterial(MaterialMessage* material, TextureFile* textu
 			textures,
 			sizeof(TextureFile)*material->numTextures);
 
-		std::cerr << "The texturepath in ""sendMaterial""  is : " << textures->texturePath << std::endl;
+		//std::cerr << "The texturepath in ""sendMaterial""  is : " << textures->texturePath << std::endl;
 		bool result = MessageHandler::GetInstance()->SendNewMessage(dataTosend, MessageType::MATERIAL, msgSize);
 
 		delete dataTosend;
@@ -259,11 +259,11 @@ bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 
 		if (knownShaders.find(mMatName.asChar()) != knownShaders.end())
 		{
-			std::cerr << " This shader is already known! : " << mMatName << std::endl;
+			//std::cerr << " This shader is already known! : " << mMatName << std::endl;
 		}
 		else
 		{
-			std::cerr << "New Shader discovered in sendMaterial! : " << mMatName << std::endl;
+			//std::cerr << "New Shader discovered in sendMaterial! : " << mMatName << std::endl;
 			knownShaders[mMatName.asChar()] = materialNode;
 		}
 
@@ -288,7 +288,7 @@ bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 					}
 					//A texture exists
 					memcpy(diffuse.texturePath, filename.asChar(), filename.length());
-					std::cerr << "Texture map is : " << diffuse.texturePath << std::endl;
+					//std::cerr << "Texture map is : " << diffuse.texturePath << std::endl;
 					diffuse.type = TextureTypes::DIFFUSE;
 					material.numTextures += 1;
 				}
@@ -315,7 +315,6 @@ bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 			val.getData(rgb[0], rgb[1], rgb[2]);
 			material.ambient = Float3(rgb[0], rgb[1], rgb[2]);
 		}
-
 
 		MPlug specColorPlug = MFnDependencyNode(materialNode).findPlug("specularColor", &status);
 		if (status != MS::kFailure)
@@ -348,9 +347,6 @@ bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 				material.specularVal = (eccentricity < 0.03125f) ? 128.0f : 4.0f / eccentricity;
 			}
 		}
-		
-		
-
 		return SendMaterial(&material, &diffuse);
 	}
 	else
@@ -360,8 +356,6 @@ bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 CallbackHandler::CallbackHandler()
 {
 }
-
-
 
 CallbackHandler::~CallbackHandler()
 {
@@ -510,7 +504,6 @@ bool CallbackHandler::Init()
 
 void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
 {
-
 	
 	MFnDependencyNode depNode(plug.node());
 	MPlug matPlug = depNode.findPlug("iog").elementByLogicalIndex(0);
@@ -539,55 +532,28 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 		return;
 	}
 
-	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && !plug.isArray() && plug.isElement()) //if a specific vert has changed
+	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && plug.isArray() && !plug.isElement()) //if a specific vert has changed
 	{
-		std::cerr << "Found Vertex Movement!" << std::endl;
-		MDagPath item;
-		MObject component, node;
-		iterator.getDagPath(item, component);
-		iterator.getDagPath(item);
+		MStringArray changes;
+		MFnNumericData point(plug.attribute());
+		std::cerr << plug.info() << std::endl;
 
-		node = plug.node();
-		MFnMesh mesh = node;
-		MString meshName = mesh.name().asChar();
+		plug.getSetAttrCmds(changes, MPlug::kChanged);
+		//for (size_t i = 0; i < changes.length(); i++)
+		//{
+			//if (changes.length() == 1)
+			//{
 
 
-		MPoint point, sPoint;
-		mesh.getPoint(plug.logicalIndex(), point);
-		MItMeshVertex iteratorMeshVert(item, component);
-		sPoint = iteratorMeshVert.position();
+				float x, y, z;
+				point.getData3Float(x, y, z);
+				x = plug.child(0).asFloat();
+				y = plug.child(1).asFloat();
+				z = plug.child(2).asFloat();
+				std::cerr << "A Vert has changed!! |" << x << "," << y << "," << z << "|  " << std::endl << changes << std::endl;
 
-		unsigned int offset = sizeof(VertSegmentMessage);
-
-		if (point == sPoint)
-		{
-			MIntArray offsetId, indexList;
-			mesh.getTriangles(offsetId, indexList);
-			MFnTransform transform = mesh.parent(0);
-
-			Vertex tempVert;
-			VertSegmentMessage vertSegMessasge;
-			memcpy(vertSegMessasge.nodeName, mesh.name().asChar(), mesh.name().length());
-			vertSegMessasge.nameLength = mesh.name().length();
-			vertSegMessasge.nodeName[vertSegMessasge.nameLength] = '\0';
-			vertSegMessasge.numVertices = iteratorMeshVert.count();
-			memcpy(meshDataToSend, &vertSegMessasge, sizeof(VertSegmentMessage));
-
-			tempVert.position.x = -point.x;
-			tempVert.position.y = point.y;
-			tempVert.position.z = point.z;
-
-			//needs normals here later
-
-			VertexMessage vertMessage;
-			vertMessage.indexId = plug.logicalIndex();
-			vertMessage.vert = tempVert;
-			memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
-			offset += sizeof(VertexMessage);
-
-			MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
-			MessageType::VERTSEGMENT);
-		}
+			//}
+		//}
 	}
 }
 
