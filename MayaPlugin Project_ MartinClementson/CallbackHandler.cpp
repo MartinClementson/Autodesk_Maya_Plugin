@@ -164,7 +164,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 	}
 	//UVs
 	MFloatArray U, V;
-	mesh.getUVs(V, U, 0); //changing U and V positions to align with D3D11. 0 stands for what UV set to use (default 0)
+	mesh.getUVs(U, V, 0); 
 	//combtime new
 	MIntArray triCount, TriIndices;
 	mesh.getTriangleOffsets(triCount, TriIndices);
@@ -189,8 +189,8 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 		tempVert.tangent.x = tangents[normalList[TriIndices[i]]].x;
 		tempVert.tangent.y = tangents[normalList[TriIndices[i]]].y;
 		tempVert.tangent.z = tangents[normalList[TriIndices[i]]].z;
-		tempVert.uv.x = U[vertList[TriIndices[i]]];
-		tempVert.uv.y = V[vertList[TriIndices[i]]];
+		tempVert.uv.x = U[vertList[normalList[TriIndices[i]]]];
+		tempVert.uv.y = V[vertList[normalList[TriIndices[i]]]] * -1;
 		tempVert.logicalIndex = triangleVerts[i];
 		tempVert.normalIndex =TriIndices[i];
 		std::cerr << "ID: " << normalList[TriIndices[i]] << " Normal: " << tempVert.normal.x << " | " << tempVert.normal.y << " | " << tempVert.normal.z << endl;
