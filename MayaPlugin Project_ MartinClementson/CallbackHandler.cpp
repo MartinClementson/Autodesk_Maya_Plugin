@@ -111,7 +111,15 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 	MGlobal::executeCommandStringResult(MString(command.c_str()));
 
 	MFnTransform obj(mesh.parent(0));
-	MMatrix matrix       = obj.transformationMatrix();
+	//MMatrix matrix       = obj.transformationMatrix();
+
+	MFnDependencyNode depNode(obj.object());
+	MFnMatrixData parentMatrix = depNode.findPlug("pm").elementByLogicalIndex(0).asMObject();
+	MMatrix matrix = obj.transformationMatrix();
+	matrix = matrix * parentMatrix.matrix();
+
+
+
 	size_t sizeOfMessage = sizeof(MeshMessage);
 	unsigned int offset  = sizeof(MeshMessage); //byte offset when storing the data to the char array
 
