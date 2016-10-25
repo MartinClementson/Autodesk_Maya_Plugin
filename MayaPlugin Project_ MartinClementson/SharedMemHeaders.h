@@ -74,6 +74,8 @@ struct Vertex
 	Float3 binormal;
 	Float3 tangent;
 	Float2 uv;
+	int logicalIndex;
+	int normalIndex;
 
 
 	Vertex(Float3 position, Float3 normal, Float3 binormal, Float3 tangent, Float2 uv)
@@ -152,6 +154,7 @@ struct VertSegmentMessage //for n verts, but not a whole mesh,
 	char nodeName[256];
 	unsigned int nameLength;
 	unsigned int numVertices;
+	unsigned int numNormals;
 
 };
 
@@ -159,7 +162,6 @@ struct VertexMessage // for single verts.
 {
 	unsigned int indexId; // the id in the array. so we know which one to update
 	Vertex vert;
-
 };
 
 struct TransformMessage

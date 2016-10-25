@@ -103,13 +103,9 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 	}
 	else
 		return false;
-
-
-
+	
 	string command = "setAttr " + name + ".quadSplit 1";
-
 	MGlobal::executeCommandStringResult(MString(command.c_str()));
-
 	MFnTransform obj(mesh.parent(0));
 	//MMatrix matrix       = obj.transformationMatrix();
 
@@ -122,11 +118,9 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 
 	size_t sizeOfMessage = sizeof(MeshMessage);
 	unsigned int offset  = sizeof(MeshMessage); //byte offset when storing the data to the char array
-
 	for (size_t row = 0; row < 4; row++)
 		for (size_t column = 0; column < 4; column++)
 			meshMessage.worldMatrix[(4 * row) + column] = (float)matrix.matrix[row][column];
-
 
 	MIntArray numTriangles;
 	MIntArray triangleVerts;
@@ -137,9 +131,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 	meshMessage.nameLength = obj.name().length();
 	memcpy(meshMessage.nodeName, obj.name().asChar(), meshMessage.nameLength);
 	meshMessage.nodeName[meshMessage.nameLength] = '\0';
-	//use the transformnode name, since that is the id in the renderer
 	meshMessage.vertexCount = triangleVerts.length();
-
 	memcpy(meshDataToSend, &meshMessage, sizeof(MeshMessage));
 
 	//Raw vertices
@@ -184,7 +176,7 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 	for (size_t i = 0; i < triangleVerts.length(); i++)
 	{
 		Vertex tempVert;
-		tempVert.position.x = -rawVertices[triangleVerts[i] * 3];
+		tempVert.position.x = rawVertices[triangleVerts[i] * 3];
 		tempVert.position.y = rawVertices[triangleVerts[i] * 3 + 1];
 		tempVert.position.z = rawVertices[triangleVerts[i] * 3 + 2];
 		tempVert.normal.x = rawNormals[normalList[TriIndices[i]] * 3];
@@ -199,21 +191,20 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 		tempVert.tangent.z = tangents[normalList[TriIndices[i]]].z;
 		tempVert.uv.x = U[vertList[TriIndices[i]]];
 		tempVert.uv.y = V[vertList[TriIndices[i]]];
-
+		tempVert.logicalIndex = triangleVerts[i];
+		tempVert.normalIndex =TriIndices[i];
+		std::cerr << "ID: " << normalList[TriIndices[i]] << " Normal: " << tempVert.normal.x << " | " << tempVert.normal.y << " | " << tempVert.normal.z << endl;
 		indices[i] = i;
 		memcpy(meshDataToSend + offset, &tempVert, sizeof(Vertex));
 		offset += sizeof(Vertex);
 	}
-
 	////Indices
-	//unsigned int * indices = new unsigned int[meshMessage.indexCount];
-
-	//for (size_t i = 0; i < triangleVerts.length() / 3; i++)
-	//{
-	//	indices[i * 3]     = triangleVerts[i*3 + 0];
-	//	indices[i * 3 + 1] = triangleVerts[i*3 + 1];	 //notice the shift, the order is different in DirectX, so we change it here
-	//	indices[i * 3 + 2] = triangleVerts[i*3 + 2];
-	//}
+	for (size_t i = 0; i < triangleVerts.length() / 3; i++)
+	{
+		int temp2 = indices[i * 3 + 2];
+		indices[i * 3 + 2] = indices[i * 3 + 1];
+		indices[i * 3 + 1] = temp2;				 //notice the shift, the order is different in DirectX, so we change it here
+	}
 	memcpy(meshDataToSend + offset, indices, sizeof(unsigned int) *meshMessage.indexCount);
 
 bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend, 
@@ -477,10 +468,9 @@ bool CallbackHandler::Init()
 
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(meshIt.currentItem(), VertChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 		MFnMesh mesh(meshIt.currentItem());
-		
+
 		char materialName[256];
 		memset(materialName, '\0', 256);
-	
 
 		if (result == MS::kSuccess)
 		{
@@ -512,7 +502,7 @@ bool CallbackHandler::Init()
 
 void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
 {
-	
+
 	MFnDependencyNode depNode(plug.node());
 	MPlug matPlug = depNode.findPlug("iog").elementByLogicalIndex(0);
 	//First check is for material changes TO THE MESH. ie, new material, deleted material. etc
@@ -520,12 +510,7 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 	{
 		if (plug.node().hasFn(MFn::kMesh))
 		{ 
-		//if (msg & MNodeMessage::kConnectionBroken | MNodeMessage::kOtherPlugSet)
-		//{
-		//	std::cerr << "Connection is broken" << std::endl;
-		//	return;
-		//}
-
+	
 			std::cerr << "Material Changed: " << depNode.name() << std::endl;
 			MFnMesh mesh(plug.node());
 
@@ -540,28 +525,123 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 		return;
 	}
 
-	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && plug.isArray() && !plug.isElement()) //if a specific vert has changed
+	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && !plug.isArray() && plug.isElement()) //if a specific vert has changed
 	{
-		MStringArray changes;
-		MFnNumericData point(plug.attribute());
-		std::cerr << plug.info() << std::endl;
+		std::cerr << "Found Movement!" << std::endl;
+		MSelectionList selectionList;
+		MGlobal::getActiveSelectionList(selectionList);
+		MItSelectionList iterator(selectionList);
+		MDagPath item;
+		MObject component, node;
+		iterator.getDagPath(item, component);
+		iterator.getDagPath(item);
 
-		plug.getSetAttrCmds(changes, MPlug::kChanged);
-		//for (size_t i = 0; i < changes.length(); i++)
-		//{
-			//if (changes.length() == 1)
-			//{
+		node = plug.node();
+		if (!node.hasFn(MFn::kMesh))
+			return;
+		MFnMesh mesh = node;
+		MFnTransform obj(mesh.parent(0));
+		MString meshName = obj.name().asChar();
 
+		MPointArray points;
+		MIntArray logicalIDs;
+		MFloatVectorArray normals, normals2;
+		MFloatArray U, V;
+		MIntArray normCount, normIDs;
+		const float* rawNormals = mesh.getRawNormals(0);
+		mesh.getUVs(V, U, 0);
+		mesh.getNormals(normals2, MSpace::kObject);
+		mesh.getNormalIds(normCount, normIDs);
 
-				float x, y, z;
-				point.getData3Float(x, y, z);
-				x = plug.child(0).asFloat();
-				y = plug.child(1).asFloat();
-				z = plug.child(2).asFloat();
-				std::cerr << "A Vert has changed!! |" << x << "," << y << "," << z << "|  " << std::endl << changes << std::endl;
+		if (component.apiType() == MFn::kMeshPolygonComponent)
+		{
+			cerr << component.apiTypeStr() << endl;
+			MItMeshPolygon	iteratorMeshPoly(item, component);
+			iteratorMeshPoly.getPoints(points, MSpace::kObject);
+			for (; !iteratorMeshPoly.isDone(); iteratorMeshPoly.next())
+			{
+				MPointArray temp;
+				iteratorMeshPoly.getPoints(temp, MSpace::kObject);
+				iteratorMeshPoly.getVertices(logicalIDs);
+				for (size_t i = 0; i < temp.length(); i++)
+				{
+					points.append(temp[i]);
+					logicalIDs.append(iteratorMeshPoly.vertexIndex(i));
+				}
+			}
+		}
+		else if (component.apiType() == MFn::kMeshEdgeComponent)
+		{
+			cerr << component.apiTypeStr() << endl;
+			MItMeshEdge		iteratorMeshEdge(item, component);
+			for (; !iteratorMeshEdge.isDone(); iteratorMeshEdge.next())
+			{
+				points.append(iteratorMeshEdge.point(0, MSpace::kObject));
+				points.append(iteratorMeshEdge.point(1, MSpace::kObject));
+				logicalIDs.append(iteratorMeshEdge.index(0));
+				logicalIDs.append(iteratorMeshEdge.index(1));
 
-			//}
-		//}
+			}
+		}
+		else if (component.apiType() == MFn::kMeshVertComponent)
+		{
+			cerr << component.apiTypeStr() << endl;
+			MItMeshVertex	iteratorMeshVert(item, component);
+			for (; !iteratorMeshVert.isDone(); iteratorMeshVert.next())
+			{
+				points.append(iteratorMeshVert.position());
+				logicalIDs.append(iteratorMeshVert.index());
+			}
+		}
+		else
+		{
+			cerr << "Fatal Error 0xfded " << endl;
+			return;
+		}
+
+		unsigned int offset = sizeof(VertSegmentMessage);
+		VertSegmentMessage vertSegMessasge;
+		memcpy(vertSegMessasge.nodeName, meshName.asChar(), mesh.name().length());
+		vertSegMessasge.nameLength = meshName.length();
+		vertSegMessasge.nodeName[vertSegMessasge.nameLength] = '\0';
+		vertSegMessasge.numVertices = points.length(); //dubbelkolla dupes
+		vertSegMessasge.numNormals = normIDs.length();
+		memcpy(meshDataToSend, &vertSegMessasge, sizeof(VertSegmentMessage));
+
+		Float3* normalsToSend = new Float3[normIDs.length()];
+		for (size_t i = 0; i < normIDs.length(); i++)
+		{
+				normalsToSend[i].x = rawNormals[normIDs[i] * 3];
+				normalsToSend[i].y = rawNormals[normIDs[i] * 3 + 1];
+				normalsToSend[i].z = rawNormals[normIDs[i] * 3 + 2];
+		}
+		memcpy(meshDataToSend + offset, normalsToSend, sizeof(Float3) * normIDs.length());
+		offset += sizeof(Float3) * normIDs.length();
+		delete[] normalsToSend;
+		int* IDptr = new int[normIDs.length()];
+		normIDs.get(IDptr);
+		memcpy(meshDataToSend + offset, IDptr, sizeof(int) * normIDs.length());
+		delete[] IDptr;
+		offset += sizeof(int) * normIDs.length();
+
+		for (size_t i = 0; i < points.length(); i++)
+		{
+			VertexMessage vertMessage;
+			Vertex tempVert;
+
+			tempVert.position.x = points[i].x;
+			tempVert.position.y = points[i].y;
+			tempVert.position.z = points[i].z;
+			tempVert.logicalIndex = logicalIDs[i];
+			vertMessage.indexId = logicalIDs[i];
+			vertMessage.vert = tempVert;
+
+			memcpy(meshDataToSend + offset, &vertMessage, sizeof(VertexMessage));
+			offset += sizeof(VertexMessage);
+
+		}
+		MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
+		MessageType::VERTSEGMENT, offset);
 	}
 }
 
@@ -614,6 +694,7 @@ void CallbackHandler::TopologyChanged(MObject & node, void * clientData)
 	MFnMesh thisMesh(node);
 
 	std::cerr << "Topology has changed |" << thisMesh.name() << std::endl;
+	SendMesh(thisMesh);
 }
 
 void CallbackHandler::NodeCreated(MObject & node, void * clientData)
