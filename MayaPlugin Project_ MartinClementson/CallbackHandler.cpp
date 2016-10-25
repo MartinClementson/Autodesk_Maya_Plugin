@@ -705,21 +705,19 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	
 	}
 	
-		std::cerr << matrix.matrix[0][0] << " " << matrix.matrix[0][1] << " " << matrix.matrix[0][2] << " " << matrix.matrix[0][3] << std::endl;
-		std::cerr << matrix.matrix[1][0] << " " << matrix.matrix[1][1] << " " << matrix.matrix[1][2] << " " << matrix.matrix[1][3] << std::endl;
-		std::cerr << matrix.matrix[2][0] << " " << matrix.matrix[2][1] << " " << matrix.matrix[2][2] << " " << matrix.matrix[2][3] << std::endl;
-		std::cerr << matrix.matrix[3][0] << " " << matrix.matrix[3][1] << " " << matrix.matrix[3][2] << " " << matrix.matrix[3][3] << std::endl;
-
 	std::cerr << "A TransformNode has changed!! |" << obj.name() << "   | " << modified << std::endl;
 	
 
-	for (size_t row = 0; row < 4; row++)
-	{
-		for (size_t column = 0; column < 4; column++)
-		{
-			header.matrix[(4 * row) + column] = (float)matrix.matrix[row][column]; 
-		}
-	}
+	//for (size_t row = 0; row < 4; row++)
+	//{
+	//	for (size_t column = 0; column < 4; column++)
+	//	{
+	//		header.matrix[(4 * row) + column] = (float)matrix.matrix[row][column]; 
+	//	}
+	//}
+
+	MFloatMatrix floatMatrix(matrix.matrix); // convert it into float
+	memcpy(header.matrix, floatMatrix.matrix, sizeof(float) * 16);
 
 	char newHeader[sizeof(TransformMessage)];
 
@@ -834,23 +832,17 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		viewport.projectionMatrix(projMatrixDouble);
 		if (memcmp(lastKnownView, viewMatrixDouble.matrix, sizeof(double) * 16) == 0)
 		{
-
 			//now check if the projection has made any changes,
 			if (memcmp(lastKnownProj, projMatrixDouble.matrix, sizeof(double) * 16) == 0)
 			{
 				//std::cerr << "The camera has not been updated, dont send" << std::endl;
 				return;
-
 			}
 			else
 				memcpy(lastKnownProj, projMatrixDouble.matrix, sizeof(double) * 16);
-
 		}
 		else
 			memcpy(lastKnownView, viewMatrixDouble.matrix, sizeof(double) * 16);
-
-
-		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
 		
 		CameraMessage header;
 		
