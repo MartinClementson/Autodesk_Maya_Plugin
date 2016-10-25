@@ -189,8 +189,8 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 		tempVert.tangent.x = tangents[normalList[TriIndices[i]]].x;
 		tempVert.tangent.y = tangents[normalList[TriIndices[i]]].y;
 		tempVert.tangent.z = tangents[normalList[TriIndices[i]]].z;
-		tempVert.uv.x = U[vertList[normalList[TriIndices[i]]]];
-		tempVert.uv.y = V[vertList[normalList[TriIndices[i]]]] * -1;
+		tempVert.uv.x = U[vertList[TriIndices[i]]];
+		tempVert.uv.y = V[vertList[TriIndices[i]]] * -1;
 		tempVert.logicalIndex = triangleVerts[i];
 		tempVert.normalIndex =TriIndices[i];
 		std::cerr << "ID: " << normalList[TriIndices[i]] << " Normal: " << tempVert.normal.x << " | " << tempVert.normal.y << " | " << tempVert.normal.z << endl;
@@ -314,16 +314,11 @@ bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 			val.getData(rgb[0], rgb[1], rgb[2]);
 			material.ambient = Float3(rgb[0], rgb[1], rgb[2]);
 		}
+		
 
-		MPlug specColorPlug = MFnDependencyNode(materialNode).findPlug("specularColor", &status);
-		if (status != MS::kFailure)
-		{
-			MObject data;
-			specColorPlug.getValue(data);
-			MFnNumericData val(data);
-			val.getData(rgb[0], rgb[1], rgb[2]);
-			material.specularRGB = Float3(rgb[0], rgb[1], rgb[2]);
-		}
+		
+		
+			material.specularRGB = Float3(0.0f, 0.0f, 0.0f);
 		if (materialNode.hasFn(MFn::kPhong))
 		{
 			MPlug cosinePlug = MFnDependencyNode(materialNode).findPlug("cosinePower", &status);
@@ -333,6 +328,15 @@ bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 				float cosPower = 0.0f;
 				cosinePlug.getValue(cosPower);
 				material.specularVal = cosPower * 4.0f;
+			}
+			MPlug specColorPlug = MFnDependencyNode(materialNode).findPlug("specularColor", &status);
+			if (status != MS::kFailure)
+			{
+				MObject data;
+				specColorPlug.getValue(data);
+				MFnNumericData val(data);
+				val.getData(rgb[0], rgb[1], rgb[2]);
+				material.specularRGB = Float3(rgb[0], rgb[1], rgb[2]);
 			}
 		}
 		if (materialNode.hasFn(MFn::kBlinn))
@@ -344,6 +348,15 @@ bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
 				float eccentricity = 0.0f;
 				cosinePlug.getValue(eccentricity);
 				material.specularVal = (eccentricity < 0.03125f) ? 128.0f : 4.0f / eccentricity;
+			}
+			MPlug specColorPlug = MFnDependencyNode(materialNode).findPlug("specularColor", &status);
+			if (status != MS::kFailure)
+			{
+				MObject data;
+				specColorPlug.getValue(data);
+				MFnNumericData val(data);
+				val.getData(rgb[0], rgb[1], rgb[2]);
+				material.specularRGB = Float3(rgb[0], rgb[1], rgb[2]);
 			}
 		}
 		return SendMaterial(&material, &diffuse);
