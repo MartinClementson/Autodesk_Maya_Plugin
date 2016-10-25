@@ -16,7 +16,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 	{
 	case MESH:		
 	{
-
 		char * newMessage = new char[sizeof(MainMessageHeader) + length];
 		mainHead.messageType = MESH;
 		mainHead.msgSize     = length;
@@ -39,6 +38,10 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 		memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));						 //merge the message and the header
 		memcpy(newMessage + sizeof(MainMessageHeader), msg, sizeof(CameraMessage));	     //merge the message and the header
 		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(CameraMessage));
+		Float3* pos = &((CameraMessage*)msg)->camPos;
+		std::cerr << "Campos being sent : " << pos->x << "," << pos->y << "," << pos->z << std::endl;
+		
+		
 		break;			 
 	}
 	case TRANSFORM:	
@@ -54,9 +57,32 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(TransformMessage));
 		break;			 
 	}
-	case MATERIAL:		 
-		break;	
+	case MATERIAL:		
+	{
+		mainHead.messageType = MATERIAL;
+		mainHead.msgSize	 = sizeof(MaterialMessage);
+		MaterialMessage* matMsg = (MaterialMessage*)msg;
+		if (matMsg->numTextures > 0)
+		{
+			size_t msgSize = sizeof(MainMessageHeader) + length;
+			char* newMessage = new char[msgSize];
+			memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));
+			memcpy(newMessage + sizeof(MainMessageHeader), msg, length);	 //merge the message and the header
+			
+			result = engineCommunicator.PutMessageIntoBuffer(newMessage, msgSize);
+			delete newMessage;
+		}
+		else
+		{
+			char newMessage [sizeof(MainMessageHeader) + sizeof(MaterialMessage)];
+			memcpy(newMessage, &mainHead, sizeof(MainMessageHeader));
+			memcpy(newMessage + sizeof(MainMessageHeader), msg, sizeof(MaterialMessage));	 //merge the message and the header
 
+			result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(MaterialMessage));
+
+		}
+		break;	
+	}
 	case DELETION:
 	{
 		mainHead.messageType = DELETION;
@@ -69,8 +95,6 @@ bool MessageHandler::SendNewMessage(char * msg, MessageType type, size_t length)
 
 		result = engineCommunicator.PutMessageIntoBuffer(newMessage, sizeof(MainMessageHeader) + sizeof(DeleteMessage));
 	}
-
-
 	default:			 
 		break;			 
 	}

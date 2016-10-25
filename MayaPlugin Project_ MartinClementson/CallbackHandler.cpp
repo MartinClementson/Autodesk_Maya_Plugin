@@ -1,5 +1,13 @@
 
 #include "CallbackHandler.h"
+
+
+MCallbackIdArray CallbackHandler::callBackIds;
+
+char* CallbackHandler::meshDataToSend;
+
+std::unordered_map<std::string, MObject> CallbackHandler::knownShaders;
+std::unordered_map<std::string, MObject> CallbackHandler::deletedNodes;
 inline void UpdateChildren(MFnTransform& transformNode)
 {
 	// recursive
@@ -15,20 +23,88 @@ inline void UpdateChildren(MFnTransform& transformNode)
 			MFnTransform childN(transformNode.child(i));
 			UpdateChildren(childN);
 		}
+	}
+}
+inline MObject findShader(MObject& setNode)
+{
+	MFnDependencyNode fnNode(setNode);
+	MPlug shaderPlug = fnNode.findPlug("surfaceShader");
+	if (!shaderPlug.isNull())
+	{
+		MPlugArray connectedPlugs;
+		bool asSrc = false;
+		bool asDst = true;
+		shaderPlug.connectedTo(connectedPlugs, asDst, asSrc);
+		if (connectedPlugs.length() != 1)
+			return MObject::kNullObj;
+		else
+			return connectedPlugs[0].node();
 
 	}
+}
+
+inline bool GetMeshShaderName(MFnMesh& mesh, MString& nameContainer)
+{
+
+	MObjectArray sets;
+	MObjectArray comps;
+	unsigned int instanceNum = mesh.dagPath().instanceNumber();
+	if (!mesh.getConnectedSetsAndMembers(instanceNum, sets, comps, true))
+		return false;
+	/*
+	getConnectedSetsAndMembers()
+	Returns all the sets connected to the specified instance of this DAG object.
+	For each set in the "sets" array there is a corresponding entry in the "comps" array which are all the components in that set. If the entire object is in a set,
+	then the corresponding entry in the comps array will have no elements in it.
+	*/
+
+	if (sets.length())
+	{
+		MObject set = sets[0];
+		MObject comp = comps[0];
 
 
+		MStatus status;
+		MObject shaderNode = findShader(set);
+		if (shaderNode != MObject::kNullObj)
+		{
+
+			
+			nameContainer = MFnDependencyNode(shaderNode).name();
+			if (nameContainer.asChar() > 0)
+				return true;
+			
+		}
+	}
+	return false;
 
 }
 
 
-bool CallbackHandler::SendMesh(MFnMesh & mesh)
+
+bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 {
 	MeshMessage meshMessage;
 	string name = mesh.name().asChar();
 	if (name == "")
 		return false;
+
+	if (materialName != nullptr)
+		memcpy(meshMessage.materialName, materialName, 256);
+
+	MString shaderName;
+	if (GetMeshShaderName(mesh, shaderName))
+	{
+		if (knownShaders.find(shaderName.asChar()) != knownShaders.end())
+		{
+			std::cerr << " This shader is already known! : " << shaderName << std::endl;
+			memcpy(meshMessage.materialName, shaderName.asChar(), shaderName.length());
+		}
+	}
+	else
+		return false;
+
+
 
 	string command = "setAttr " + name + ".quadSplit 1";
 
@@ -141,6 +217,146 @@ bool result =	MessageHandler::GetInstance()->SendNewMessage(meshDataToSend,
 	return result;
 }
 
+
+bool CallbackHandler::SendMaterial(MaterialMessage* material, TextureFile* textures)
+{
+	if (material->numTextures > 0) // if there are textures
+	{
+		size_t msgSize = sizeof(MaterialMessage) + (sizeof(TextureFile) * material->numTextures);
+		char* dataTosend = new char[msgSize];
+		memcpy(dataTosend, material, sizeof(MaterialMessage));
+		memcpy(dataTosend + sizeof(MaterialMessage),
+			textures,
+			sizeof(TextureFile)*material->numTextures);
+
+		std::cerr << "The texturepath in ""sendMaterial""  is : " << textures->texturePath << std::endl;
+		bool result = MessageHandler::GetInstance()->SendNewMessage(dataTosend, MessageType::MATERIAL, msgSize);
+
+		delete dataTosend;
+		return result;
+	}
+	else
+	{
+		bool result = MessageHandler::GetInstance()->SendNewMessage((char*)material, MessageType::MATERIAL,sizeof(MaterialMessage));
+		return result;
+	}
+
+
+	
+}
+
+
+bool CallbackHandler::ExtractAndSendMaterial(MObject materialNode)
+{
+	MaterialMessage material;
+	TextureFile diffuse;
+	
+	if (materialNode != MObject::kNullObj)
+	{
+		MStatus status;
+		float rgb[3];
+		MString mMatName = MFnDependencyNode(materialNode).name();
+
+		if (knownShaders.find(mMatName.asChar()) != knownShaders.end())
+		{
+			std::cerr << " This shader is already known! : " << mMatName << std::endl;
+		}
+		else
+		{
+			std::cerr << "New Shader discovered in sendMaterial! : " << mMatName << std::endl;
+			knownShaders[mMatName.asChar()] = materialNode;
+		}
+
+		memcpy(material.matName, mMatName.asChar(), mMatName.length());
+		std::cerr << "Shader name : " << material.matName << std::endl;
+		MPlug colorPlug = MFnDependencyNode(materialNode).findPlug("color", &status);
+		if (status != MS::kFailure)
+		{
+			MItDependencyGraph It(colorPlug, MFn::kFileTexture, MItDependencyGraph::kUpstream);
+			if (!It.isDone())
+			{
+				// Get the filename
+				MString filename;
+				MFnDependencyNode(It.thisNode()).findPlug("fileTextureName").getValue(filename);
+				if (filename.length())
+				{
+					if (filename.length() > 256)
+					{
+						std::cerr << "Texture path :" << filename.asChar() << "\n"
+							<< " is too long! Consider changing the name" << std::endl;
+						return false;
+					}
+					//A texture exists
+					memcpy(diffuse.texturePath, filename.asChar(), filename.length());
+					std::cerr << "Texture map is : " << diffuse.texturePath << std::endl;
+					diffuse.type = TextureTypes::DIFFUSE;
+					material.numTextures += 1;
+				}
+			}
+			else
+			{
+				//No texture exists, get the rgb values
+				MObject data;
+				colorPlug.getValue(data);
+				MFnNumericData val(data);
+				val.getData(rgb[0], rgb[1], rgb[2]);
+				material.diffuse = Float3(rgb[0], rgb[1], rgb[2]);
+			}
+		}
+		else
+			return false;
+
+		MPlug ambientPlug = MFnDependencyNode(materialNode).findPlug("ambientColor", &status);
+		if (status != MS::kFailure)
+		{
+			MObject data;
+			ambientPlug.getValue(data);
+			MFnNumericData val(data);
+			val.getData(rgb[0], rgb[1], rgb[2]);
+			material.ambient = Float3(rgb[0], rgb[1], rgb[2]);
+		}
+
+
+		MPlug specColorPlug = MFnDependencyNode(materialNode).findPlug("specularColor", &status);
+		if (status != MS::kFailure)
+		{
+			MObject data;
+			specColorPlug.getValue(data);
+			MFnNumericData val(data);
+			val.getData(rgb[0], rgb[1], rgb[2]);
+			material.specularRGB = Float3(rgb[0], rgb[1], rgb[2]);
+		}
+		if (materialNode.hasFn(MFn::kPhong))
+		{
+			MPlug cosinePlug = MFnDependencyNode(materialNode).findPlug("cosinePower", &status);
+			if (status != MS::kFailure)
+			{
+				MObject data;
+				float cosPower = 0.0f;
+				cosinePlug.getValue(cosPower);
+				material.specularVal = cosPower * 4.0f;
+			}
+		}
+		if (materialNode.hasFn(MFn::kBlinn))
+		{
+			MPlug cosinePlug = MFnDependencyNode(materialNode).findPlug("eccentricity", &status);
+			if (status != MS::kFailure)
+			{
+				MObject data;
+				float eccentricity = 0.0f;
+				cosinePlug.getValue(eccentricity);
+				material.specularVal = (eccentricity < 0.03125f) ? 128.0f : 4.0f / eccentricity;
+			}
+		}
+		
+		
+
+		return SendMaterial(&material, &diffuse);
+	}
+	else
+		return false;
+}
+
 CallbackHandler::CallbackHandler()
 {
 }
@@ -151,6 +367,7 @@ CallbackHandler::~CallbackHandler()
 {
 	delete[] CallbackHandler::meshDataToSend;
 	MMessage::removeCallbacks(callBackIds);
+	knownShaders.clear();
 
 }
 
@@ -220,7 +437,36 @@ bool CallbackHandler::Init()
 
 	}
 
+	MItDependencyNodes shaderIt(MFn::kLambert, &result);
+	
+	for (; !shaderIt.isDone(); shaderIt.next())
+	{
+		MFnDependencyNode mat(shaderIt.item());
+		const char* name=  mat.name().asChar();
+		std::cerr << "New Material Found : " << name << std::endl;
+		knownShaders[name] = shaderIt.item();
+		ExtractAndSendMaterial(shaderIt.item());
+		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(shaderIt.item(), MaterialChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 
+		if (result == MS::kSuccess)
+			callBackIds.append(polyId);
+	}
+	MItDependencyNodes textureIT(MFn::kFileTexture, &result);
+	for (; !textureIT.isDone(); textureIT.next())
+	{
+		
+
+			MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(textureIT.item(), TextureChanged, NULL, &result); 
+
+			if (result == MS::kSuccess)
+				callBackIds.append(polyId);
+			std::cerr << "A TEXTUREFILE IS ADDED!!!! " << std::endl;
+		
+
+
+	}
+
+	
 	MItDag meshIt(MItDag::kBreadthFirst, MFn::kMesh, &result);
 	for (; !meshIt.isDone(); meshIt.next())
 	{
@@ -230,10 +476,9 @@ bool CallbackHandler::Init()
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(meshIt.currentItem(), VertChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
 		MFnMesh mesh(meshIt.currentItem());
 		
-
-	//string name = mesh.name().asChar();
-	//string command = "setAttr " + name +".quadSplit 1";
-	//MGlobal::executeCommandStringResult(MString(command.c_str()));
+		char materialName[256];
+		memset(materialName, '\0', 256);
+	
 
 		if (result == MS::kSuccess)
 		{
@@ -254,7 +499,7 @@ bool CallbackHandler::Init()
 
 		
 	
-		CallbackHandler::SendMesh(mesh);
+		CallbackHandler::SendMesh(mesh,materialName);
 		
 	}
 	
@@ -265,10 +510,34 @@ bool CallbackHandler::Init()
 
 void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
 {
-		std::cerr << "Found Possible Vertex Movement!" << std::endl;
-		MSelectionList selectionList;
-		MGlobal::getActiveSelectionList(selectionList);
-		MItSelectionList iterator(selectionList);
+
+	
+	MFnDependencyNode depNode(plug.node());
+	MPlug matPlug = depNode.findPlug("iog").elementByLogicalIndex(0);
+	//First check is for material changes TO THE MESH. ie, new material, deleted material. etc
+	if (matPlug == plug)
+	{
+		if (plug.node().hasFn(MFn::kMesh))
+		{ 
+		//if (msg & MNodeMessage::kConnectionBroken | MNodeMessage::kOtherPlugSet)
+		//{
+		//	std::cerr << "Connection is broken" << std::endl;
+		//	return;
+		//}
+
+			std::cerr << "Material Changed: " << depNode.name() << std::endl;
+			MFnMesh mesh(plug.node());
+
+			if (!CallbackHandler::SendMesh(mesh, nullptr))
+			{
+				queueMutex.lock();
+				meshToSendQueue.push(plug.node());
+				queueMutex.unlock();
+			}
+		}
+	
+		return;
+	}
 
 	if (msg & MNodeMessage::AttributeMessage::kAttributeSet && !plug.isArray() && plug.isElement()) //if a specific vert has changed
 	{
@@ -325,6 +594,7 @@ void CallbackHandler::VertChanged(MNodeMessage::AttributeMessage msg, MPlug & pl
 void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::MatrixModifiedFlags & modified, void * clientData)
 {
 
+	MStatus result; 
 	MFnDependencyNode depNode(transformNode);
 	MFnTransform obj(transformNode);
 	TransformMessage header;
@@ -333,12 +603,6 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	memcpy(header.nodeName, obj.name().asChar(), header.nameLength);
 	header.nodeName[header.nameLength] = '\0';
 
-
-
-
-	MStatus result; 
-
-	
 
 	MFnMatrixData parentMatrix = depNode.findPlug("pm").elementByLogicalIndex(0).asMObject();
 	MMatrix matrix = obj.transformationMatrix();
@@ -350,28 +614,17 @@ void CallbackHandler::WorldMatrixChanged(MObject & transformNode, MDagMessage::M
 	{
 		if (obj.child(child).hasFn(MFn::kCamera))
 		{
-			std::cerr << " Camera node : not sent" << std::endl;
+
 			//if This belongs to a camera, return. 
 			return;
 		}
 	
 	}
 	
-		std::cerr << matrix.matrix[0][0] << " " << matrix.matrix[0][1] << " " << matrix.matrix[0][2] << " " << matrix.matrix[0][3] << std::endl;
-		std::cerr << matrix.matrix[1][0] << " " << matrix.matrix[1][1] << " " << matrix.matrix[1][2] << " " << matrix.matrix[1][3] << std::endl;
-		std::cerr << matrix.matrix[2][0] << " " << matrix.matrix[2][1] << " " << matrix.matrix[2][2] << " " << matrix.matrix[2][3] << std::endl;
-		std::cerr << matrix.matrix[3][0] << " " << matrix.matrix[3][1] << " " << matrix.matrix[3][2] << " " << matrix.matrix[3][3] << std::endl;
-
 	std::cerr << "A TransformNode has changed!! |" << obj.name() << "   | " << modified << std::endl;
 	
-
-	for (size_t row = 0; row < 4; row++)
-	{
-		for (size_t column = 0; column < 4; column++)
-		{
-			header.matrix[(4 * row) + column] = (float)matrix.matrix[row][column]; 
-		}
-	}
+	MFloatMatrix floatMatrix(matrix.matrix); // convert it into float
+	memcpy(header.matrix, floatMatrix.matrix, sizeof(float) * 16);
 
 	char newHeader[sizeof(TransformMessage)];
 
@@ -391,39 +644,53 @@ void CallbackHandler::TopologyChanged(MObject & node, void * clientData)
 
 void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 {
-
+	MStatus result;
 	if (node.hasFn(MFn::kTransform))
 	{
-		MStatus result;
+		
 		MCallbackId cbId = MNodeMessage::addNodeAboutToDeleteCallback(node, NodeDestroyed, NULL, &result);
 		if (result == MS::kSuccess)
 		{
 			callBackIds.append(cbId);
-
 			std::cerr << "Deletion callback added!  " << std::endl;
 		}
 	}
+	if (node.hasFn(MFn::kLambert))
+	{
+		ExtractAndSendMaterial(node);
+		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, MaterialChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
+		std::cerr << " A new Material has been created!" << std::endl;
+		if (result == MS::kSuccess)
+			callBackIds.append(polyId);
+	}
+	if (node.hasFn(MFn::kFileTexture))
+	{
+		
+		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, TextureChanged, NULL, &result); //attr callback is for when anything has been changed (not REMOVED)
+		
+		if (result == MS::kSuccess)
+			callBackIds.append(polyId);
+		std::cerr << "A TEXTUREFILE IS ADDED!!!! " << std::endl;
+	}
+	
 
 
 	if (node.hasFn(MFn::kMesh))
 	{
-
-
-
 		MFnMesh mesh(node);
 		
 		MFnDagNode nodeHandle(node);
-		MStatus result;
+		
 		MCallbackId polyId = MNodeMessage::addAttributeChangedCallback(node, VertChanged, NULL, &result);
 		
 		std::cerr << nodeHandle.fullPathName() << std::endl;
 	
-			if (!CallbackHandler::SendMesh(mesh))
-			{
-				queueMutex.lock();
-				meshToSendQueue.push(node);
-				queueMutex.unlock();
-			}
+		if (!CallbackHandler::SendMesh(mesh,nullptr))
+		{
+			queueMutex.lock();
+			meshToSendQueue.push(node);
+			queueMutex.unlock();
+		}
 	
 		if (MS::kSuccess == result)
 		{
@@ -447,11 +714,7 @@ void CallbackHandler::NodeCreated(MObject & node, void * clientData)
 			
 			std::cerr << "Polychange callback added!  "  << std::endl;
 		}
-
-
 	}
-
-
 }
 
 void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
@@ -459,16 +722,37 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 
 	//This is called for every frame, Create an if here that checks if the cam has been updated
 	//until then, have a good day
-
-
-		MString focusedPanel = MGlobal::executeCommandStringResult("getPanel -wf");
-		std::cerr << "Panel callback : " << str.asChar()          << std::endl;
-		std::cerr << "Active panel   :"  << focusedPanel.asChar() << std::endl;
+	static double lastKnownView[4][4]{0};
+	static double lastKnownProj[4][4]{ 0 };
+	//now i've done that! and my days were good. thank you
+	
+	MString focusedPanel = MGlobal::executeCommandStringResult("getPanel -wf");
+	//std::cerr << "Panel callback : " << str.asChar()          << std::endl;
 	if (str == focusedPanel)
 	{
+		M3dView viewport;//= M3dView::active3dView();
+		M3dView::getM3dViewFromModelPanel(focusedPanel, viewport);
+		//View Matrix
+		MMatrix viewMatrixDouble;
+		viewport.modelViewMatrix(viewMatrixDouble);		  // get the matrix as double
+		MMatrix projMatrixDouble;
+		viewport.projectionMatrix(projMatrixDouble);
+		if (memcmp(lastKnownView, viewMatrixDouble.matrix, sizeof(double) * 16) == 0)
+		{
+			//now check if the projection has made any changes,
+			if (memcmp(lastKnownProj, projMatrixDouble.matrix, sizeof(double) * 16) == 0)
+			{
+				//std::cerr << "The camera has not been updated, dont send" << std::endl;
+				return;
+			}
+			else
+				memcpy(lastKnownProj, projMatrixDouble.matrix, sizeof(double) * 16);
+		}
+		else
+			memcpy(lastKnownView, viewMatrixDouble.matrix, sizeof(double) * 16);
 		
 		CameraMessage header;
-		M3dView viewport;//= M3dView::active3dView();
+		
 		M3dView::getM3dViewFromModelPanel(focusedPanel, viewport);
 
 		////// All this just to get the proper name/////////////
@@ -480,38 +764,44 @@ void CallbackHandler::CameraUpdated( const MString &str, void *clientData)
 		memcpy(header.nodeName, tempCamTransform.name().asChar(), header.nameLength > 256 ?  256 : header.nameLength );
 		header.nodeName[header.nameLength] = '\0';			  //
 		///////////////////////////////////////////////////////
-
-		MFnCamera mCam(camera);
-		
-
-		std::cerr << "Camera is   :" << tempCamTransform.name().asChar() << std::endl;
 		viewport.updateViewingParameters();
 
-		//View Matrix
-		MMatrix viewMatrixDouble;
-		viewport.modelViewMatrix(viewMatrixDouble);		  // get the matrix as double
+		double pos[3];
+		MStatus stat = tempCamTransform.translation(MSpace::kTransform).get(pos);
+		if(stat != MStatus::kFailure)
+			header.camPos = Float3(pos);
+		
+		MFnCamera mCam(camera);
+		float fov = (float)mCam.verticalFieldOfView();
+		DirectX::XMMATRIX d3dProj;
+		if (mCam.isOrtho())
+		{
+			float x = (float)mCam.orthoWidth();
+			float y = (float)viewport.portHeight();
+			float aspect = 800.0f / 600.0f;			//this is bad, but it works. don't copy this. it's an ugly fix
+			float w = aspect * mCam.orthoWidth();
+		
+			d3dProj = DirectX::XMMatrixOrthographicLH(
+				(float)w,
+				(float)w,
+				mCam.nearClippingPlane(),
+				mCam.farClippingPlane());
+		}
+		else
+		{
+			d3dProj = DirectX::XMMatrixPerspectiveFovLH((float)mCam.verticalFieldOfView()
+			,(float)mCam.aspectRatio(),
+			mCam.nearClippingPlane(),
+			mCam.farClippingPlane());
+
+		}
+
+	
 		MFloatMatrix viewMatrix(viewMatrixDouble.matrix); // convert it into float
 		memcpy(header.viewMatrix, viewMatrix.matrix, sizeof(float) * 16);
 																		 
-		//Proj Matrix												 
-	//MMatrix projMatrixDouble;					
-	//viewport.projectionMatrix(projMatrixDouble);
-	//projMatrixDouble = projMatrixDouble.homogenize();
-	//
-	//MFloatMatrix projMatrix(viewMatrixDouble.matrix); // convert it into float
+		memcpy(header.projMatrix, d3dProj.r->m128_f32, sizeof(float) * 16);
 
-		MFloatMatrix projMatrix = mCam.projectionMatrix();
-		memcpy(header.projMatrix, projMatrix.matrix, sizeof(float) * 16);
-
-
-	
-
-		std::cerr << viewMatrix.matrix[0][0] << " " << viewMatrix.matrix[0][1] << " " << viewMatrix.matrix[0][2] << " " << viewMatrix .matrix[0][3] << std::endl;
-		std::cerr << viewMatrix.matrix[1][0] << " " << viewMatrix.matrix[1][1] << " " << viewMatrix.matrix[1][2] << " " << viewMatrix .matrix[1][3] << std::endl;
-		std::cerr << viewMatrix.matrix[2][0] << " " << viewMatrix.matrix[2][1] << " " << viewMatrix.matrix[2][2] << " " << viewMatrix .matrix[2][3] << std::endl;
-		std::cerr << viewMatrix.matrix[3][0] << " " << viewMatrix.matrix[3][1] << " " << viewMatrix.matrix[3][2] << " " << viewMatrix .matrix[3][3] << std::endl;
-
-		
 
 		char newHeader[sizeof(CameraMessage)];
 		memset(newHeader, '\0', sizeof(CameraMessage));
@@ -530,9 +820,27 @@ void CallbackHandler::TimeCallback(float elapsedTime, float lastTime, void * cli
 	if (!meshToSendQueue.empty())
 	{
 		std::cerr << "Time Callback: trying to send mesh" << std::endl;
-		while (CallbackHandler::SendMesh(MFnMesh(meshToSendQueue.front())))
+		bool send = true;
+		while (send)
 		{
-			meshToSendQueue.pop();
+			if (CallbackHandler::SendMesh(MFnMesh(meshToSendQueue.front(), nullptr)))
+			{
+
+				meshToSendQueue.pop();
+			}
+			else
+			{
+				MFnDagNode   object(meshToSendQueue.front());
+				 // this is because, deletion caused a bug where we tried to send a deleted mesh
+				// in  this infinite loop.
+				if (deletedNodes.find(object.name().asChar()) == deletedNodes.end())
+				{ //if the mesh to send is present in the deleted nodes. remove it from the queue
+					std::cerr << " This mesh has been deleted and will not be send to the renderer" << std::endl;
+					meshToSendQueue.pop();
+					deletedNodes.erase(object.name().asChar());
+				}
+
+			}
 			if (meshToSendQueue.empty())
 				return;
 		}
@@ -544,8 +852,6 @@ void CallbackHandler::TimeCallback(float elapsedTime, float lastTime, void * cli
 void CallbackHandler::NodeDestroyed(MObject &node, MDGModifier &modifier, void *clientData)
 {
 	
-
-
 	if (node.hasFn(MFn::kTransform))
 	{
 
@@ -558,5 +864,60 @@ void CallbackHandler::NodeDestroyed(MObject &node, MDGModifier &modifier, void *
 		memcpy(newMessage.nodeName, object.name().asChar(), object.name().length());
 		newMessage.nameLength = object.name().length();
 		MessageHandler::GetInstance()->SendNewMessage((char*) &newMessage, MessageType::DELETION, sizeof(DeleteMessage));
+	
+		deletedNodes[object.name().asChar()] = node;
 	}
+}
+
+void CallbackHandler::MaterialChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug& otherPlug, void *)
+{
+
+	//This callback is for material nodes,
+
+	if (plug.node().hasFn(MFn::kLambert))
+	{
+		ExtractAndSendMaterial(plug.node());
+		//std::cerr << "MATERIALS HAVE CHANGED WOHOOOO" << std::endl;
+	}
+
+}
+
+void CallbackHandler::TextureChanged(MNodeMessage::AttributeMessage msg, MPlug & plug, MPlug & otherPlug, void *)
+{
+
+	MFnDependencyNode depNode(plug.node());
+	MPlug texPlug = depNode.findPlug("fileTextureName");
+
+	if (texPlug == plug)
+	{
+		MPlugArray plugArray;
+		MStatus result;
+	
+		MPlug outCol = depNode.findPlug("outColor");
+
+		outCol.connectedTo(plugArray, false, true,&result);
+		if (result != MStatus::kFailure)
+		{
+			if (plugArray.length() > 0)
+			{
+				//std::cerr << plugArray[0].name().asChar() << std::endl;
+
+				
+				MFnDependencyNode connectedNode(plugArray[0].node());
+				std::cerr <<  connectedNode.name().asChar() << std::endl;
+				ExtractAndSendMaterial(plugArray[0].node());
+
+			}
+			else
+				std::cerr << "Could not find any connections to this texture" << std::endl;
+
+		}
+		MString texName;
+		texPlug.getValue(texName);
+		//std::cerr << "TEXTURE HAS CHANGED: " << texName.asChar() << std::endl;
+		
+		
+		return;
+	}
+
 }

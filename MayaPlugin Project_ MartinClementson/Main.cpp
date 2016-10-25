@@ -4,13 +4,10 @@
 #include <maya/MFnPlugin.h>
 #include "CallbackHandler.h"
 #define UNICODE 1
-CallbackHandler* callbackHandler = nullptr;
-MCallbackIdArray CallbackHandler::callBackIds;
 
- char* CallbackHandler::meshDataToSend;
 
 //circular_buffer<char>* localBuffer;
-
+CallbackHandler* callbackHandler = nullptr;
 
 EXPORT MStatus initializePlugin(MObject obj) {
 	std::cout.rdbuf(std::cerr.rdbuf());
