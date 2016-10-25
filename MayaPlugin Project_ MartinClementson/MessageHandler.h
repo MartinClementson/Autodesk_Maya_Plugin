@@ -1,6 +1,8 @@
 #pragma once
 #include "EngineCommunicator.h"
 #include "SharedMemHeaders.h"
+#include <iostream>
+
 class MessageHandler
 {
 private :
