@@ -172,7 +172,17 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 	mesh.getVertices(vertCount, vertList);
 	MIntArray normCount, normalList;
 	mesh.getNormalIds(normCount, normalList);
+	MIntArray uvCount, uvIDs;
+	mesh.getAssignedUVs(uvCount, uvIDs);
 	unsigned int * indices = new unsigned int[meshMessage.indexCount];
+
+	//mMesh.getAssignedUVs(uvCount, uvIds);
+	//cheers!
+	//
+	//	vData[i].u = mU[uvIndex[offsetIndices[i].nr].nr];
+	//vData[i].v = mV[uvIndex[offsetIndices[i].nr].nr];
+
+
 	for (size_t i = 0; i < triangleVerts.length(); i++)
 	{
 		Vertex tempVert;
@@ -189,8 +199,8 @@ bool CallbackHandler::SendMesh(MFnMesh & mesh, char* materialName)
 		tempVert.tangent.x = tangents[normalList[TriIndices[i]]].x;
 		tempVert.tangent.y = tangents[normalList[TriIndices[i]]].y;
 		tempVert.tangent.z = tangents[normalList[TriIndices[i]]].z;
-		tempVert.uv.x = U[vertList[TriIndices[i]]];
-		tempVert.uv.y = V[vertList[TriIndices[i]]] * -1;
+		tempVert.uv.x = U[uvIDs[TriIndices[i]]];
+		tempVert.uv.y = V[uvIDs[TriIndices[i]]] * -1;
 		tempVert.logicalIndex = triangleVerts[i];
 		tempVert.normalIndex =TriIndices[i];
 		std::cerr << "ID: " << normalList[TriIndices[i]] << " Normal: " << tempVert.normal.x << " | " << tempVert.normal.y << " | " << tempVert.normal.z << endl;
